@@ -1,0 +1,9 @@
+if [ -f @CMAKE_INSTALL_PREFIX@/share/gazebo-@GAZEBO_VERSION@/setup.sh ]; then
+  . @CMAKE_INSTALL_PREFIX@/share/gazebo-@GAZEBO_VERSION@/setup.sh 
+elif [ -f /usr/share/gazebo-@GAZEBO_VERSION@/setup.sh ]; then
+  . /usr/share/gazebo-@GAZEBO_VERSION@/setup.sh  
+else
+  echo "Warning: failed to find Gazebo's setup.sh.  You will need to source it manually."
+fi
+export GAZEBO_MODEL_PATH=@CMAKE_INSTALL_PREFIX@/share/@PROJECT_NAME@-@DRC_SIM_VERSION@/models:$GAZEBO_MODEL_PATH
+export GAZEBO_PLUGIN_PATH=@CMAKE_INSTALL_PREFIX@/@LIB_INSTALL_DIR@/@PROJECT_NAME@-@DRC_SIM_VERSION@/plugins:$GAZEBO_PLUGIN_PATH

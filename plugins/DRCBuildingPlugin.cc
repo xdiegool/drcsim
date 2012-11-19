@@ -1,0 +1,120 @@
+/*
+ *  Gazebo - Outdoor Multi-Robot Simulator
+ *  Copyright (C) 2003
+ *     Nate Koenig & Andrew Howard
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ */
+/*
+ * Desc: 3D position interface for ground truth.
+ * Author: Sachin Chitta and John Hsu
+ * Date: 1 June 2008
+ * SVN info: $Id$
+ */
+
+#include "DRCBuildingPlugin.hh"
+
+namespace gazebo
+{
+////////////////////////////////////////////////////////////////////////////////
+// Constructor
+DRCBuildingPlugin::DRCBuildingPlugin()
+{
+  this->doorCmd = 0;
+  this->handleCmd = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Destructor
+DRCBuildingPlugin::~DRCBuildingPlugin()
+{
+  event::Events::DisconnectWorldUpdateStart(this->updateConnection);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Load the controller
+void DRCBuildingPlugin::Load(physics::ModelPtr _parent,
+                                 sdf::ElementPtr _sdf)
+{
+  // Get the world name.
+  this->world = _parent->GetWorld();
+  this->model = _parent;
+  this->world->EnablePhysicsEngine(true);
+
+  this->doorLink = this->model->GetLink(_sdf->GetValueString("door_link"));
+  this->doorJoint = this->model->GetJoint(_sdf->GetValueString("door_joint"));
+  this->handleJoint = this->model->GetJoint(
+    _sdf->GetValueString("handle_joint"));
+  this->doorJoint->SetHighStop(0, 0);
+  this->doorJoint->SetLowStop(0, 0);
+
+  this->doorPID.Init(200, 1, 3, 10, -10, 50, -50);
+  this->handlePID.Init(10, 0.3, 1, 1, -1, 5, -5);
+  this->lastTime = this->world->GetSimTime();
+
+  // New Mechanism for Updating every World Cycle
+  // Listen to the update event. This event is broadcast every
+  // simulation iteration.
+  this->updateConnection = event::Events::ConnectWorldUpdateStart(
+      boost::bind(&DRCBuildingPlugin::UpdateStates, this));
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Play the trajectory, update states
+void DRCBuildingPlugin::UpdateStates()
+{
+  common::Time curTime = this->world->GetSimTime();
+  this->doorState = this->doorJoint->GetAngle(0).Radian();
+  this->handleState = this->handleJoint->GetAngle(0).Radian();
+
+  double dt = (curTime - this->lastTime).Double();
+  if (dt > 0)
+  {
+    // PID (position) door
+    double doorError = this->doorState - this->doorCmd;
+    double doorCmd = this->doorPID.Update(doorError, dt);
+    this->doorJoint->SetForce(0, doorCmd);
+
+    // PID (position) handle
+    double handleError = this->handleState - this->handleCmd;
+    double handleCmd = this->handlePID.Update(handleError, dt);
+    this->handleJoint->SetForce(0, handleCmd);
+
+    // simulate door lock
+    if (math::equal(this->handleState, 0.0) &&
+        math::equal(this->doorState, 0.0))
+    {
+      this->doorJoint->SetHighStop(0, 0);
+      this->doorJoint->SetLowStop(0, 0);
+    }
+    else
+    {
+      this->doorJoint->SetHighStop(0, 1.5708);
+      this->doorJoint->SetLowStop(0, -1.5708);
+    }
+
+    this->lastTime = curTime;
+  }
+  else if (dt < 0)
+  {
+    // has time been reset?
+    this->lastTime = curTime;
+  }
+}
+
+GZ_REGISTER_MODEL_PLUGIN(DRCBuildingPlugin)
+}

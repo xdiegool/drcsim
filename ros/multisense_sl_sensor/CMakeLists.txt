@@ -24,15 +24,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #common commands for building c++ executables and libraries
 #rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
 #target_link_libraries(${PROJECT_NAME} another_library)
+#rosbuild_add_boost_directories()
+#rosbuild_link_boost(${PROJECT_NAME} thread)
 #rosbuild_add_executable(example examples/example.cpp)
 #target_link_libraries(example ${PROJECT_NAME})
-
-rosbuild_add_boost_directories()
-rosbuild_add_executable(simple_trajectory src/simple_trajectory.cpp)
-rosbuild_link_boost(simple_trajectory thread)
-
-rosbuild_add_executable(squat src/squat.cpp)
-rosbuild_link_boost(squat thread)
-
-rosbuild_add_executable(stand src/stand.cpp)
-rosbuild_link_boost(stand thread)

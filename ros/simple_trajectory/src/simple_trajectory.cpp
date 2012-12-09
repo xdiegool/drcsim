@@ -89,12 +89,12 @@ public:
     // Positions
     int ind = 0;
     goal.trajectory.points[ind].positions.resize(28);
-    goal.trajectory.points[ind].positions[0] = 0.0;
-    goal.trajectory.points[ind].positions[1] = -0.1;
-    goal.trajectory.points[ind].positions[2] = 0.0;
-    goal.trajectory.points[ind].positions[3] = 0.0;
-    goal.trajectory.points[ind].positions[4] = 0.1;
-    goal.trajectory.points[ind].positions[5] = 0.3;
+    goal.trajectory.points[ind].positions[0]  = 0.0;
+    goal.trajectory.points[ind].positions[1]  = -0.1;
+    goal.trajectory.points[ind].positions[2]  = 0.0;
+    goal.trajectory.points[ind].positions[3]  = 0.0;
+    goal.trajectory.points[ind].positions[4]  = 0.1;
+    goal.trajectory.points[ind].positions[5]  = 0.3;
 
     goal.trajectory.points[ind].positions[6]  = 0.0;
     goal.trajectory.points[ind].positions[7]  = -0.7;
@@ -135,12 +135,12 @@ public:
     // Positions
     ind += 1;
     goal.trajectory.points[ind].positions.resize(28);
-    goal.trajectory.points[ind].positions[0] = 0.0;
-    goal.trajectory.points[ind].positions[1] = 0.4;
-    goal.trajectory.points[ind].positions[2] =  1.2;
-    goal.trajectory.points[ind].positions[3] =  0.8;
-    goal.trajectory.points[ind].positions[4] = -1.4;
-    goal.trajectory.points[ind].positions[5] = 0.2;
+    goal.trajectory.points[ind].positions[0]  = 0.0;
+    goal.trajectory.points[ind].positions[1]  = 0.4;
+    goal.trajectory.points[ind].positions[2]  =  1.2;
+    goal.trajectory.points[ind].positions[3]  =  0.8;
+    goal.trajectory.points[ind].positions[4]  = -1.4;
+    goal.trajectory.points[ind].positions[5]  = 0.2;
 
     goal.trajectory.points[ind].positions[6]  = 0.0;
     goal.trajectory.points[ind].positions[7]  = -0.7;
@@ -181,15 +181,15 @@ public:
     // Positions
     ind += 1;
     goal.trajectory.points[ind].positions.resize(28);
-    goal.trajectory.points[ind].positions[0] = 0;
-    goal.trajectory.points[ind].positions[1] = 0;
-    goal.trajectory.points[ind].positions[2] = 0;
-    goal.trajectory.points[ind].positions[3] = 0;
-    goal.trajectory.points[ind].positions[4] = 0.1;
-    goal.trajectory.points[ind].positions[5] = 0;
+    goal.trajectory.points[ind].positions[0]  = 0;
+    goal.trajectory.points[ind].positions[1]  = 0;
+    goal.trajectory.points[ind].positions[2]  = 0;
+    goal.trajectory.points[ind].positions[3]  = 0;
+    goal.trajectory.points[ind].positions[4]  = 0.1;
+    goal.trajectory.points[ind].positions[5]  = 0;
 
-    goal.trajectory.points[ind].positions[6] = 0.0;
-    goal.trajectory.points[ind].positions[7] = 0.0;
+    goal.trajectory.points[ind].positions[6]  = 0.0;
+    goal.trajectory.points[ind].positions[7]  = 0.0;
     goal.trajectory.points[ind].positions[8]  = -0.2;
     goal.trajectory.points[ind].positions[9]  =  0.4;
     goal.trajectory.points[ind].positions[10] = -0.4;
@@ -227,17 +227,17 @@ public:
     // Positions
     ind += 1;
     goal.trajectory.points[ind].positions.resize(28);
-    goal.trajectory.points[ind].positions[0] = 0.0;
-    goal.trajectory.points[ind].positions[1] = 0.0;
-    goal.trajectory.points[ind].positions[2] = 0.0;
-    goal.trajectory.points[ind].positions[3] = 0.0;
-    goal.trajectory.points[ind].positions[4] = 0.0;
-    goal.trajectory.points[ind].positions[5] = 0.0;
+    goal.trajectory.points[ind].positions[0]  = 0.0;
+    goal.trajectory.points[ind].positions[1]  = 0.0;
+    goal.trajectory.points[ind].positions[2]  = 0.0;
+    goal.trajectory.points[ind].positions[3]  = 0.0;
+    goal.trajectory.points[ind].positions[4]  = 0.0;
+    goal.trajectory.points[ind].positions[5]  = 0.0;
 
-    goal.trajectory.points[ind].positions[6] = 0.0;
-    goal.trajectory.points[ind].positions[7] = 0.0;
-    goal.trajectory.points[ind].positions[8] = 0.0;
-    goal.trajectory.points[ind].positions[9] = 0.0;
+    goal.trajectory.points[ind].positions[6]  = 0.0;
+    goal.trajectory.points[ind].positions[7]  = 0.0;
+    goal.trajectory.points[ind].positions[8]  = 0.0;
+    goal.trajectory.points[ind].positions[9]  = 0.0;
     goal.trajectory.points[ind].positions[10] = 0.0;
     goal.trajectory.points[ind].positions[11] = 0.0;
 

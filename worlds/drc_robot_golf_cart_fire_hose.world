@@ -49,7 +49,7 @@
       <pose>-2 1.0 0.93 0 0 0</pose>
     </include>
 
-    <!--<plugin filename="libVRCPlugin.so" name="vrc_plugin">
+    <plugin filename="libVRCPlugin.so" name="vrc_plugin">
       <drc_robot>
          <model_name>drc_robot</model_name>
          <pin_link>utorso</pin_link>
@@ -64,7 +64,7 @@
       <drc_standpipe>
         <model_name>standpipe</model_name>
       </drc_standpipe>
-    </plugin>-->
+    </plugin>
 
   </world>
 </gazebo>

@@ -1,7 +1,6 @@
 /*
  *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2003
- *     Nate Koenig & Andrew Howard
+ *  Copyright (C) 2012 Open Source Robotics Foundation
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -71,10 +70,10 @@ void VRCPlugin::LoadThread()
   // initialize ros
   if (!ros::isInitialized())
   {
-    int argc = 0;
-    char** argv = NULL;
-    ros::init(argc,argv,"gazebo",
-      ros::init_options::NoSigintHandler|ros::init_options::AnonymousName);
+    gzerr << "Not loading plugin since ROS hasn't been "
+          << "properly initialized.  Try starting gazebo with ros plugin:\n"
+          << "  gazebo -s libgazebo_ros_api.so\n";
+    return;
   }
 
   // ros stuff
@@ -174,6 +173,7 @@ void VRCPlugin::SetRobotMode(const std::string &_str)
   else if (_str == "nominal")
   {
     // reinitialize pinning
+    this->warpRobotWithCmdVel = false;
     physics::Link_V links = this->drc_robot.model->GetLinks();
     for (unsigned int i = 0; i < links.size(); ++i)
     {
@@ -367,7 +367,7 @@ void VRCPlugin::RobotEnterCar(const geometry_msgs::Pose::ConstPtr &_cmd)
   }
   ROS_INFO("set configuration done");
 
-  this->drc_robot.vehicleRelPose = math::Pose(math::Vector3(0.52, 0.5, 1.17),
+  this->drc_robot.vehicleRelPose = math::Pose(math::Vector3(0.52, 0.5, 1.27),
                                               math::Quaternion());
 
   this->RemoveJoint(this->vehicleRobotJoint);

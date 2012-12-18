@@ -1,7 +1,6 @@
 /*
  *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2003
- *     Nate Koenig & Andrew Howard
+ *  Copyright (C) 2012 Open Source Robotics Foundation
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -34,7 +33,6 @@ namespace gazebo
 // Constructor
 DRCRobotPlugin::DRCRobotPlugin()
 {
-  this->connectionCount = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,13 +82,8 @@ void DRCRobotPlugin::LoadThread()
   this->rosnode_ = new ros::NodeHandle("~");
 
   // ros publication / subscription
-  ros::AdvertiseOptions pub_status_ao =
-    ros::AdvertiseOptions::create<std_msgs::String>(
-    "/drc_robot/status", 10,
-    boost::bind(&DRCRobotPlugin::OnStatusConnect,this),
-    boost::bind(&DRCRobotPlugin::OnStatusDisconnect,this),
-    ros::VoidPtr(), &this->queue_);
-  pub_status_ = this->rosnode_->advertise(pub_status_ao);
+  this->pub_status_ =
+    this->rosnode_->advertise<std_msgs::String>("drc_robot/status", 10);
 
   this->lastUpdateTime = this->world->GetSimTime().Double();
   this->updateRate = 1.0; // Hz
@@ -103,22 +96,12 @@ void DRCRobotPlugin::LoadThread()
      boost::bind(&DRCRobotPlugin::UpdateStates, this));
 }
 
-void DRCRobotPlugin::OnStatusConnect()
-{
-  this->connectionCount++;
-}
-
-void DRCRobotPlugin::OnStatusDisconnect()
-{
-  this->connectionCount--;
-}
-
 void DRCRobotPlugin::UpdateStates()
 {
   /// @todo:  robot internals
   /// self diagnostics, damages, etc.
 
-  if (this->connectionCount > 0)
+  if (this->pub_status_.getNumSubscribers() > 0)
   {
     double cur_time = this->world->GetSimTime().Double();
 

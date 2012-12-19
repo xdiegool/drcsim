@@ -1,0 +1,42 @@
+material Gazebo/GolfCart/F_box
+{
+	technique
+	{
+		pass
+		{
+      emissive 1.0 1.0 1.0
+			texture_unit
+			{
+        texture F.png
+			}
+		}
+	}
+}
+material Gazebo/GolfCart/N_box
+{
+	technique
+	{
+		pass
+		{
+      emissive 1.0 1.0 1.0
+			texture_unit
+			{
+        texture N.png
+			}
+		}
+	}
+}
+material Gazebo/GolfCart/R_box
+{
+	technique
+	{
+		pass
+		{
+      emissive 1.0 1.0 1.0
+			texture_unit
+			{
+        texture R.png
+			}
+		}
+	}
+}

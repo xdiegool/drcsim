@@ -782,6 +782,12 @@ void DRCVehiclePlugin::RosPublishStates()
     this->key_state_pub_.publish(msg_key);
     msg_direction.data = static_cast<int8_t>(GetDirectionState());
     this->direction_state_pub_.publish(msg_direction);
+    // Add here so it's throttled 
+    msgs::Visual vis_msg;
+    msgs::Material mat_msg;
+    vis_msg.set_name(this->model->GetScopedName() + "::chassis::FNR_box");
+    //mat_msg.set_material
+
   }
 }
 

@@ -4,7 +4,8 @@
     <pose>0 0 0.93 0 0 0</pose>
   </gazebo>
   <gazebo>
-    <plugin name="atlas_plugin" filename="libAtlasPlugin.so"/>
+    <plugin filename="libMultiSenseSLPlugin.so" name="multisense_plugin" />
+    <plugin filename="libAtlasPlugin.so" name="atlas_plugin" />
     <plugin filename="libgazebo_ros_joint_trajectory.so" name="joint_trajectory_plugin">
       <topicName>joint_trajectory</topicName>
       <updateRate>1000.0</updateRate>
@@ -79,5 +80,13 @@
     <fdir1>1 0 0</fdir1>
     <maxVel>0.0</maxVel>
     <minDepth>0.001</minDepth>
+  </gazebo>
+  <gazebo>
+    <plugin filename="libgazebo_ros_p3d.so" name="gazebo_ros_p3d">
+      <bodyName>pelvis</bodyName>
+      <topicName>/ground_truth_odom</topicName>
+      <alwaysOn>true</alwaysOn>
+      <updateRate>100.0</updateRate>
+    </plugin>
   </gazebo>
 </robot>

@@ -20,7 +20,7 @@ list (APPEND CPACK_SOURCE_IGNORE_FILES ";Ogre.log;TODO;/.hg/;.hgignore;.swp$;/bu
 set (CPACK_SOURCE_PACKAGE_FILE_NAME "@PROJECT_NAME@-@DRC_SIM_VERSION_FULL@")
 include (CPack)
 
-set (ROS_DISTRO "fuerte")
+set (ROS_DISTRO "groovy")
 
 set (INCLUDE_INSTALL_DIR "include/${PROJECT_NAME}-${DRC_SIM_VERSION}/${PROJECT_NAME}") 
 set (LIB_INSTALL_DIR "lib" CACHE STRING "Installation directory for libraries (relative to CMAKE_INSTALL_PREFIX)") 
@@ -34,7 +34,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif (NOT CMAKE_BUILD_TYPE)
 string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE)
 
-
+# find gazebo
 include (FindPkgConfig)
 if (PKG_CONFIG_FOUND)
   pkg_check_modules(GAZEBO gazebo>=1.3.0 REQUIRED)
@@ -44,6 +44,16 @@ endif()
 
 include_directories(${GAZEBO_INCLUDE_DIRS})
 link_directories(${GAZEBO_LIBRARY_DIRS})
+
+# find sandia-hand
+find_package(sandia-hand)
+if (NOT sandia-hand_FOUND)
+  message(STATUS "sandia-hand not found, not building atlas with sandia hand")
+  set(HAVE_SANDIA_HAND false)
+else ()
+  message(STATUS "sandia-hand found [${_ROS_PACKAGE_PATH}], building atlas with sandia hand")
+  set(HAVE_SANDIA_HAND true)
+endif ()
 
 #####################################
 # Configure the setup script

@@ -372,8 +372,7 @@ class GazeboRosApiPlugin : public SystemPlugin
 
     ////////////////////////////////////////////////////////////////////////////////
     /// \brief 
-    void publishSimTime(const boost::shared_ptr<gazebo::msgs::WorldStatistics const> &msg);
-    void publishSimTime();
+    void updateRosSimTime();
 
     ////////////////////////////////////////////////////////////////////////////////
     /// \brief 

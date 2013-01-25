@@ -321,8 +321,10 @@ void VRCPlugin::RobotEnterCar(const geometry_msgs::Pose::ConstPtr &_pose)
   if (this->atlas.pinJoint)
     this->RemoveJoint(this->atlas.pinJoint);
 
-  this->atlas.vehicleRelPose = math::Pose(math::Vector3(0.52, 0.5, 2),
-                                              math::Quaternion());
+  // The following line is the offset for the golf cart.
+  // this->atlas.vehicleRelPose = math::Pose(math::Vector3(0.52, 0.5, 2),
+  this->atlas.vehicleRelPose = math::Pose(math::Vector3(-0.06, -0.25, 2.02),
+                                          math::Quaternion());
 
   this->atlas.model->SetLinkWorldPose(pose +
     this->atlas.vehicleRelPose + this->drcVehicle.model->GetWorldPose(),
@@ -391,7 +393,9 @@ void VRCPlugin::RobotEnterCar(const geometry_msgs::Pose::ConstPtr &_pose)
   }
   ROS_INFO("set configuration done");
 
-  this->atlas.vehicleRelPose = math::Pose(math::Vector3(0.52, 0.5, 1.27),
+  // The following line is the offset for the golf cart.
+  // this->atlas.vehicleRelPose = math::Pose(math::Vector3(0.52, 0.5, 1.27),
+  this->atlas.vehicleRelPose = math::Pose(math::Vector3(-0.06, -0.25, 1.26),
                                               math::Quaternion());
 
   this->RemoveJoint(this->vehicleRobotJoint);

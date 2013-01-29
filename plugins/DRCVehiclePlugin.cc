@@ -1,27 +1,19 @@
 /*
- *  Gazebo - Outdoor Multi-Robot Simulator
- *  Copyright (C) 2012 Open Source Robotics Foundation
+ * Copyright 2012 Open Source Robotics Foundation
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
- */
-/*
- * Desc: Plugin for vehicle control.
- * Author: John Hsu and Steve Peters
- * Date: November 2012
- */
+*/
 
 #include <math.h>
 #include "DRCVehiclePlugin.hh"
@@ -253,7 +245,7 @@ void DRCVehiclePlugin::GetSteeredWheelLimits(math::Angle &_min,
 {
   _max = 0.5 * (this->flWheelSteeringJoint->GetHighStop(0).Radian() +
                 this->frWheelSteeringJoint->GetHighStop(0).Radian());
-  _max = 0.5 * (this->flWheelSteeringJoint->GetLowStop(0).Radian() +
+  _min = 0.5 * (this->flWheelSteeringJoint->GetLowStop(0).Radian() +
                 this->frWheelSteeringJoint->GetLowStop(0).Radian());
 }
 
@@ -358,42 +350,62 @@ void DRCVehiclePlugin::Load(physics::ModelPtr _parent,
   std::string gasPedalJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("gas_pedal");
   this->gasPedalJoint = this->model->GetJoint(gasPedalJointName);
+  if (!this->gasPedalJoint)
+    gzthrow("could not find gas pedal joint\n");
 
   std::string brakePedalJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("brake_pedal");
   this->brakePedalJoint = this->model->GetJoint(brakePedalJointName);
+  if (!this->brakePedalJoint)
+    gzthrow("could not find brake pedal joint\n");
 
   std::string handWheelJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("steering_wheel");
   this->handWheelJoint = this->model->GetJoint(handWheelJointName);
+  if (!this->handWheelJoint)
+    gzthrow("could not find steering wheel joint\n");
 
   std::string handBrakeJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("hand_brake");
   this->handBrakeJoint = this->model->GetJoint(handBrakeJointName);
+  if (!this->handBrakeJoint)
+    gzthrow("could not find hand brake joint\n");
 
   std::string flWheelJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("front_left_wheel");
   this->flWheelJoint = this->model->GetJoint(flWheelJointName);
+  if (!this->flWheelJoint)
+    gzthrow("could not find front left wheel joint\n");
 
   std::string frWheelJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("front_right_wheel");
   this->frWheelJoint = this->model->GetJoint(frWheelJointName);
+  if (!this->frWheelJoint)
+    gzthrow("could not find front right wheel joint\n");
 
   std::string blWheelJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("back_left_wheel");
   this->blWheelJoint = this->model->GetJoint(blWheelJointName);
+  if (!this->blWheelJoint)
+    gzthrow("could not find back left wheel joint\n");
 
   std::string brWheelJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("back_right_wheel");
   this->brWheelJoint = this->model->GetJoint(brWheelJointName);
+  if (!this->brWheelJoint)
+    gzthrow("could not find back right wheel joint\n");
 
   std::string flWheelSteeringJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("front_left_wheel_steering");
   this->flWheelSteeringJoint = this->model->GetJoint(flWheelSteeringJointName);
+  if (!this->flWheelSteeringJoint)
+    gzthrow("could not find front left steering joint\n");
 
   std::string frWheelSteeringJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("front_right_wheel_steering");
   this->frWheelSteeringJoint = this->model->GetJoint(frWheelSteeringJointName);
+  if (!this->frWheelSteeringJoint)
+    gzthrow("could not find front right steering joint\n");
 
   this->gasPedalHigh  = this->gasPedalJoint->GetHighStop(0).Radian();
   this->gasPedalLow   = this->gasPedalJoint->GetLowStop(0).Radian();
@@ -549,7 +561,7 @@ void DRCVehiclePlugin::UpdateStates()
     // torque direction.
     double gasPercent = this->GetGasPedalPercent();
     double gasMultiplier = this->GetGasTorqueMultiplier();
-    double flGasTorque=0, frGasTorque=0, blGasTorque=0, brGasTorque=0;
+    double flGasTorque = 0, frGasTorque = 0, blGasTorque = 0, brGasTorque = 0;
     // Apply equal torque at left and right wheels, which is an implicit model
     // of the differential.
     if (abs(this->flWheelState * this->flWheelRadius) < this->maxSpeed)

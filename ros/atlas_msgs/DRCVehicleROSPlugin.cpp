@@ -111,7 +111,15 @@ void DRCVehicleROSPlugin::SetBrakePedalState(const std_msgs::Float64::ConstPtr
 void DRCVehicleROSPlugin::Load(physics::ModelPtr _parent,
                                  sdf::ElementPtr _sdf)
 {
-  DRCVehiclePlugin::Load(_parent, _sdf);
+  try
+  {
+    DRCVehiclePlugin::Load(_parent, _sdf);
+  }
+  catch(gazebo::common::Exception &_e)
+  {
+    gzerr << "Error loading plugin. Please ensure that your vehicle model is correct and up-to-date.\n";
+    _e.Print();
+  }
 
   // initialize ros
   if (!ros::isInitialized())

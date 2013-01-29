@@ -119,6 +119,7 @@ void DRCVehicleROSPlugin::Load(physics::ModelPtr _parent,
   {
     gzerr << "Error loading plugin. Please ensure that your vehicle model is correct and up-to-date.\n";
     _e.Print();
+    return;
   }
 
   // initialize ros

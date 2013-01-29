@@ -628,6 +628,8 @@ double DRCVehiclePlugin::Saturate(double _data, double _min, double _max)
 // the function returns zero otherwise
 double DRCVehiclePlugin::get_collision_radius(physics::CollisionPtr _coll)
 {
+  if (!_coll || !(_coll->GetShape()))
+    return 0;
   if (_coll->GetShape()->HasType(gazebo::physics::Base::CYLINDER_SHAPE))
   {
     physics::CylinderShape *cyl =
@@ -646,6 +648,8 @@ double DRCVehiclePlugin::get_collision_radius(physics::CollisionPtr _coll)
 math::Vector3 DRCVehiclePlugin::get_collision_position(physics::LinkPtr _link,
                                                        unsigned int id)
 {
+  if (!_link || !(_link->GetCollision(id)))
+    return math::Vector3::Zero;
   math::Pose pose = _link->GetCollision(id)->GetWorldPose();
   return pose.pos;
 }

@@ -1,0 +1,18 @@
+<launch>
+
+  <arg name="gzname" default="gazebo"/>
+  <arg name="gzworld" default="atlas.world"/>
+  <param name="/use_sim_time" type="bool" value="true"/>
+
+  <!-- start gazebo with the Atlas -->
+  <node name="gazebo" pkg="atlas_utils" type="run_$(arg gzname)" args="$(arg gzworld)" output="screen" />
+
+  <!-- Robot Description -->
+  <param name="robot_description" textfile="$(find atlas)/atlas.urdf"/>
+  
+  <!-- static transform publisher -->
+  <node pkg="tf" type="static_transform_publisher" name="imu_link_broadcaster" args="0 0 0 0.05991527603 0 -0.01415 pelvis imu_link 100" />
+
+</launch>
+  
+

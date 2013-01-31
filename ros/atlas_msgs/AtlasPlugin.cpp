@@ -38,6 +38,7 @@ AtlasPlugin::AtlasPlugin()
   // fixed joint reduction.  Offset of the imu_link is lumped into
   // the <pose> tag in the imu_senosr block.
   this->imuLinkName = "pelvis";
+  this->controllerActive = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,7 +208,6 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   this->deferredLoadThread = boost::thread(
     boost::bind(&AtlasPlugin::DeferredLoad, this));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::SetJointCommands(
@@ -400,6 +400,15 @@ void AtlasPlugin::DeferredLoad()
   this->subJointCommands=
     this->rosNode->subscribe(jointCommandsSo);
 
+  // change controller mode (on / off)
+  std::string mode_topic_name = "atlas/controller_mode";
+  ros::SubscribeOptions controller_mode_so =
+    ros::SubscribeOptions::create<std_msgs::String>(
+    "atlas/controller_mode", 100,
+    boost::bind(&AtlasPlugin::SetControllerMode, this, _1),
+    ros::VoidPtr(), &this->rosQueue);
+  this->subControllerMode = this->rosNode->subscribe(controller_mode_so);
+
   // publish imu data
   this->pubImu =
     this->rosNode->advertise<sensor_msgs::Imu>("atlas/imu", 10);
@@ -423,6 +432,7 @@ void AtlasPlugin::DeferredLoad()
      boost::bind(&AtlasPlugin::OnRContactUpdate, this));
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::UpdateStates()
 {
   common::Time curTime = this->world->GetSimTime();
@@ -556,6 +566,7 @@ void AtlasPlugin::UpdateStates()
 
     double dt = (curTime - this->lastControllerUpdateTime).Double();
 
+    if (this->controllerActive)
     {
       boost::mutex::scoped_lock lock(this->mutex);
       {
@@ -600,8 +611,13 @@ void AtlasPlugin::UpdateStates()
       /// update pid with feedforward force
       for (unsigned int i = 0; i < this->joints.size(); ++i)
       {
-        double q_p =
-           this->jointCommands.position[i] - this->jointStates.position[i];
+        // truncate joint position within range of motion
+        double positionTarget = math::clamp(
+          this->jointCommands.position[i],
+          this->joints[i]->GetLowStop(0).Radian(),
+          this->joints[i]->GetHighStop(0).Radian());
+
+        double q_p = positionTarget - this->jointStates.position[i];
 
         if (!math::equal(dt, 0.0))
           this->errorTerms[i].d_q_p_dt = (q_p - this->errorTerms[i].q_p) / dt;
@@ -611,21 +627,21 @@ void AtlasPlugin::UpdateStates()
         this->errorTerms[i].qd_p =
            this->jointCommands.velocity[i] - this->jointStates.velocity[i];
 
-        this->errorTerms[i].q_i = math::clamp(
-          this->errorTerms[i].q_i + dt * this->errorTerms[i].q_p,
-          static_cast<double>(this->jointCommands.i_effort_min[i]),
-          static_cast<double>(this->jointCommands.i_effort_max[i]));
+        if (!math::equal(this->jointCommands.ki_position[i], 0.0))
+          this->errorTerms[i].q_i = math::clamp(
+            this->errorTerms[i].q_i + dt * this->errorTerms[i].q_p,
+            static_cast<double>(this->jointCommands.i_effort_min[i]) /
+            this->jointCommands.ki_position[i],
+            static_cast<double>(this->jointCommands.i_effort_max[i]) /
+            this->jointCommands.ki_position[i]);
 
         // use gain params to compute force cmd
-        double force = this->jointCommands.kp_position[i] *
-                       this->errorTerms[i].q_p +
-                       this->jointCommands.kp_velocity[i] *
-                       this->errorTerms[i].qd_p +
-                       this->jointCommands.ki_position[i] *
-                       this->errorTerms[i].q_i +
-                       this->jointCommands.kd_position[i] *
-                       this->errorTerms[i].d_q_p_dt +
-                       this->jointCommands.effort[i];
+        double force =
+          this->jointCommands.kp_position[i] * this->errorTerms[i].q_p +
+          this->jointCommands.ki_position[i] * this->errorTerms[i].q_i +
+          this->jointCommands.kd_position[i] * this->errorTerms[i].d_q_p_dt +
+          this->jointCommands.kp_velocity[i] * this->errorTerms[i].qd_p +
+          this->jointCommands.effort[i];
 
         this->joints[i]->SetForce(0, force);
       }
@@ -654,6 +670,7 @@ void AtlasPlugin::UpdateStates()
 
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::OnLContactUpdate()
 {
   // Get all the contacts.
@@ -712,6 +729,7 @@ void AtlasPlugin::OnLContactUpdate()
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::OnRContactUpdate()
 {
   // Get all the contacts.
@@ -770,6 +788,7 @@ void AtlasPlugin::OnRContactUpdate()
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::RosQueueThread()
 {
   static const double timeout = 0.01;
@@ -778,6 +797,18 @@ void AtlasPlugin::RosQueueThread()
   {
     this->rosQueue.callAvailable(ros::WallDuration(timeout));
   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void AtlasPlugin::SetControllerMode(const std_msgs::String::ConstPtr &_str)
+{
+  if (_str->data == "on")
+    this->controllerActive = true;
+  else if (_str->data == "off")
+    this->controllerActive = false;
+  else
+    ROS_WARN("controller mode support [on|off].");
+  
 }
 }
 

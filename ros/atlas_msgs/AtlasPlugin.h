@@ -86,6 +86,10 @@ namespace gazebo
     /// with anything that might be blocking.
     private: void DeferredLoad();
 
+    /// \brief: sets controller mode, turn things on / off for now
+    /// \param[in] _str string containing possible mode settings [on|off]
+    private: void SetControllerMode(const std_msgs::String::ConstPtr &_str);
+
     private: physics::WorldPtr world;
     private: physics::ModelPtr model;
 
@@ -140,9 +144,12 @@ namespace gazebo
     private: math::Vector3 rFootForce;
     private: math::Vector3 rFootTorque;
 
+    private: ros::Subscriber subControllerMode;
     private: ros::Subscriber subJointCommands;
     private: void SetJointCommands(
       const osrf_msgs::JointCommands::ConstPtr &_msg);
+
+    private: bool controllerActive;
 
     private: std::vector<std::string> jointNames;
     private: physics::Joint_V joints;

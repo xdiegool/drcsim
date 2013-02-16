@@ -15,6 +15,7 @@
  *
 */
 
+#include <algorithm>
 #include <string>
 
 #include "AtlasPlugin.h"
@@ -38,6 +39,7 @@ AtlasPlugin::AtlasPlugin()
   // fixed joint reduction.  Offset of the imu_link is lumped into
   // the <pose> tag in the imu_senosr block.
   this->imuLinkName = "pelvis";
+  this->controllerActive = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,7 +209,6 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   this->deferredLoadThread = boost::thread(
     boost::bind(&AtlasPlugin::DeferredLoad, this));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::SetJointCommands(
@@ -401,6 +402,15 @@ void AtlasPlugin::DeferredLoad()
   this->subJointCommands=
     this->rosNode->subscribe(jointCommandsSo);
 
+  // change controller mode (on / off)
+  std::string mode_topic_name = "atlas/controller_mode";
+  ros::SubscribeOptions controller_mode_so =
+    ros::SubscribeOptions::create<std_msgs::String>(
+    "atlas/controller_mode", 100,
+    boost::bind(&AtlasPlugin::SetControllerMode, this, _1),
+    ros::VoidPtr(), &this->rosQueue);
+  this->subControllerMode = this->rosNode->subscribe(controller_mode_so);
+
   // publish imu data
   this->pubImu =
     this->rosNode->advertise<sensor_msgs::Imu>("atlas/imu", 10);
@@ -424,6 +434,7 @@ void AtlasPlugin::DeferredLoad()
      boost::bind(&AtlasPlugin::OnRContactUpdate, this));
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::UpdateStates()
 {
   common::Time curTime = this->world->GetSimTime();
@@ -557,6 +568,7 @@ void AtlasPlugin::UpdateStates()
 
     double dt = (curTime - this->lastControllerUpdateTime).Double();
 
+    if (this->controllerActive)
     {
       boost::mutex::scoped_lock lock(this->mutex);
       {
@@ -581,7 +593,7 @@ void AtlasPlugin::UpdateStates()
         double delta2 = delta *
           (this->jointCommandsAge - this->jointCommandsAgeMean);
         this->jointCommandsAgeVariance += delta2;
-        this->jointCommandsAgeVariance -= 
+        this->jointCommandsAgeVariance -=
           this->jointCommandsAgeDelta2Buffer[
           this->jointCommandsAgeBufferIndex];
 
@@ -657,9 +669,9 @@ void AtlasPlugin::UpdateStates()
       }
     }
   }
-
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::OnLContactUpdate()
 {
   // Get all the contacts.
@@ -718,6 +730,7 @@ void AtlasPlugin::OnLContactUpdate()
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::OnRContactUpdate()
 {
   // Get all the contacts.
@@ -776,6 +789,7 @@ void AtlasPlugin::OnRContactUpdate()
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::RosQueueThread()
 {
   static const double timeout = 0.01;
@@ -784,6 +798,17 @@ void AtlasPlugin::RosQueueThread()
   {
     this->rosQueue.callAvailable(ros::WallDuration(timeout));
   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void AtlasPlugin::SetControllerMode(const std_msgs::String::ConstPtr &_str)
+{
+  if (_str->data == "on")
+    this->controllerActive = true;
+  else if (_str->data == "off")
+    this->controllerActive = false;
+  else
+    ROS_WARN("controller mode support [on|off].");
 }
 }
 

@@ -36,7 +36,7 @@ VRCPlugin::VRCPlugin()
 // Destructor
 VRCPlugin::~VRCPlugin()
 {
-  event::Events::DisconnectWorldUpdateStart(this->updateConnection);
+  event::Events::DisconnectWorldUpdateBegin(this->updateConnection);
   this->rosNode->shutdown();
   this->rosQueue.clear();
   this->rosQueue.disable();
@@ -114,7 +114,7 @@ void VRCPlugin::DeferredLoad()
   // Mechanism for Updating every World Cycle
   // Listen to the update event. This event is broadcast every
   // simulation iteration.
-  this->updateConnection = event::Events::ConnectWorldUpdateStart(
+  this->updateConnection = event::Events::ConnectWorldUpdateBegin(
      boost::bind(&VRCPlugin::UpdateStates, this));
 }
 
@@ -210,13 +210,12 @@ void VRCPlugin::SetRobotCmdVel(const geometry_msgs::Twist::ConstPtr &_cmd)
 ////////////////////////////////////////////////////////////////////////////////
 void VRCPlugin::SetRobotPose(const geometry_msgs::Pose::ConstPtr &_pose)
 {
+  math::Quaternion q(_pose->orientation.w, _pose->orientation.x,
+                     _pose->orientation.y, _pose->orientation.z);
+  q.Normalize();
   math::Pose pose(math::Vector3(_pose->position.x,
                                 _pose->position.y,
-                                _pose->position.z),
-                  math::Quaternion(_pose->orientation.w,
-                                   _pose->orientation.x,
-                                   _pose->orientation.y,
-                                   _pose->orientation.z));
+                                _pose->position.z), q);
   this->atlas.model->SetWorldPose(pose);
 }
 

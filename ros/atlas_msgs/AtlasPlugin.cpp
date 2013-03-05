@@ -16,6 +16,7 @@
 */
 
 #include <string>
+#include <algorithm>
 
 #include <gazebo/transport/Node.hh>
 
@@ -32,10 +33,6 @@ GZ_REGISTER_MODEL_PLUGIN(AtlasPlugin)
 ////////////////////////////////////////////////////////////////////////////////
 AtlasPlugin::AtlasPlugin()
 {
-  this->lFootForce = 0;
-  this->lFootTorque = 0;
-  this->rFootForce = 0;
-  this->rFootTorque = 0;
   // the parent link of the imu_sensor ends up being pelvis after
   // fixed joint reduction.  Offset of the imu_link is lumped into
   // the <pose> tag in the imu_senosr block.
@@ -82,6 +79,9 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
 
   // initialize update time
   this->lastControllerUpdateTime = this->world->GetSimTime();
+
+  // initialize imu
+  this->lastImuTime = this->world->GetSimTime();
 
   // get joints
   this->jointNames.push_back("back_lbz");
@@ -152,13 +152,13 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   for (unsigned i = 0; i < this->effortLimit.size(); ++i)
     this->effortLimit[i] = this->joints[i]->GetEffortLimit(0);
 
-  this->jointStates.name.resize(this->joints.size());
-  this->jointStates.position.resize(this->joints.size());
-  this->jointStates.velocity.resize(this->joints.size());
-  this->jointStates.effort.resize(this->joints.size());
+  this->atlasStates.joint_states.name.resize(this->joints.size());
+  this->atlasStates.joint_states.position.resize(this->joints.size());
+  this->atlasStates.joint_states.velocity.resize(this->joints.size());
+  this->atlasStates.joint_states.effort.resize(this->joints.size());
 
   for (unsigned int i = 0; i < this->jointNames.size(); ++i)
-    this->jointStates.name[i] = this->jointNames[i];
+    this->atlasStates.joint_states.name[i] = this->jointNames[i];
 
   this->jointCommands.name.resize(this->joints.size());
   this->jointCommands.position.resize(this->joints.size());
@@ -437,6 +437,9 @@ void AtlasPlugin::DeferredLoad()
   this->pubJointStates = this->rosNode->advertise<sensor_msgs::JointState>(
     "atlas/joint_states", 1);
 
+  this->pubAtlasStates = this->rosNode->advertise<atlas_msgs::AtlasStates>(
+    "atlas/atlas_states", 1);
+
   this->pubForceTorqueSensors =
     this->rosNode->advertise<atlas_msgs::ForceTorqueSensors>(
     "atlas/force_torque_sensors", 10);
@@ -446,13 +449,15 @@ void AtlasPlugin::DeferredLoad()
     this->rosNode->advertise<atlas_msgs::ControllerStatistics>(
     "atlas/controller_statistics", 10);
 
+  // these topics are used for debugging only
   this->pubLFootContact =
     this->rosNode->advertise<geometry_msgs::Wrench>(
-      "atlas/l_foot_contact", 10);
+      "atlas/debug/l_foot_contact", 10);
 
+  // these topics are used for debugging only
   this->pubRFootContact =
     this->rosNode->advertise<geometry_msgs::Wrench>(
-      "atlas/r_foot_contact", 10);
+      "atlas/debug/r_foot_contact", 10);
 
   // ros topic subscribtions
   ros::SubscribeOptions jointCommandsSo =
@@ -479,7 +484,22 @@ void AtlasPlugin::DeferredLoad()
 
   // initialize status pub time
   this->lastControllerStatisticsTime = this->world->GetSimTime().Double();
-  this->updateRate = 1.0;
+
+  // controller statistics update rate defaults to 1kHz,
+  // read from ros param if available
+  double rate;
+  if (this->rosNode->getParam("atlas/controller_statistics/update_rate",
+    rate))
+  {
+    rate = math::clamp(rate, 1.0, 10000.0);
+    ROS_INFO("AtlasPlugin controller statistics %f kHz", rate);
+    this->statsUpdateRate = rate;
+  }
+  else
+  {
+    ROS_INFO("AtlasPlugin default controller statistics 1kHz");
+    this->statsUpdateRate = 1000.0;
+  }
 
   // AtlasSimInterface:
   // subscribe to a control_mode string message, current valid commands are:
@@ -560,18 +580,18 @@ void AtlasPlugin::UpdateStates()
     }
 
     // get imu data from imu link
-    if (this->imuSensor)
+    if (this->imuSensor && curTime > this->lastImuTime)
     {
-      sensor_msgs::Imu imuMsg;
-      imuMsg.header.frame_id = this->imuLinkName;
-      imuMsg.header.stamp = ros::Time(curTime.Double());
+      sensor_msgs::Imu* imuMsg = &this->atlasStates.imu;
+      imuMsg->header.frame_id = this->imuLinkName;
+      imuMsg->header.stamp = ros::Time(curTime.Double());
 
       // compute angular rates
       {
         math::Vector3 wLocal = this->imuSensor->GetAngularVelocity();
-        imuMsg.angular_velocity.x = wLocal.x;
-        imuMsg.angular_velocity.y = wLocal.y;
-        imuMsg.angular_velocity.z = wLocal.z;
+        imuMsg->angular_velocity.x = wLocal.x;
+        imuMsg->angular_velocity.y = wLocal.y;
+        imuMsg->angular_velocity.z = wLocal.z;
 
         // AtlasSimInterface: populate imu in fromRobot
         this->fromRobot.imu.angular_velocity.n[0] = wLocal.x;
@@ -582,9 +602,9 @@ void AtlasPlugin::UpdateStates()
       // compute acceleration
       {
         math::Vector3 accel = this->imuSensor->GetLinearAcceleration();
-        imuMsg.linear_acceleration.x = accel.x;
-        imuMsg.linear_acceleration.y = accel.y;
-        imuMsg.linear_acceleration.z = accel.z;
+        imuMsg->linear_acceleration.x = accel.x;
+        imuMsg->linear_acceleration.y = accel.y;
+        imuMsg->linear_acceleration.z = accel.z;
 
         // AtlasSimInterface: populate imu in fromRobot
         this->fromRobot.imu.linear_acceleration.n[0] = accel.x;
@@ -594,12 +614,11 @@ void AtlasPlugin::UpdateStates()
 
       // compute orientation
       {
-        math::Quaternion imuRot =
-          this->imuSensor->GetOrientation();
-        imuMsg.orientation.x = imuRot.x;
-        imuMsg.orientation.y = imuRot.y;
-        imuMsg.orientation.z = imuRot.z;
-        imuMsg.orientation.w = imuRot.w;
+        math::Quaternion imuRot = this->imuSensor->GetOrientation();
+        imuMsg->orientation.x = imuRot.x;
+        imuMsg->orientation.y = imuRot.y;
+        imuMsg->orientation.z = imuRot.z;
+        imuMsg->orientation.w = imuRot.w;
 
         // AtlasSimInterface: populate imu in fromRobot
         this->fromRobot.imu.orientation_estimate.m_qw = imuRot.w;
@@ -608,7 +627,10 @@ void AtlasPlugin::UpdateStates()
         this->fromRobot.imu.orientation_estimate.m_qz = imuRot.z;
       }
 
-      this->pubImu.publish(imuMsg);
+      this->pubImu.publish(*imuMsg);
+
+      // update time
+      this->lastImuTime = curTime.Double();
     }
 
     // AtlasSimInterface: pelvis pose/twist for internal debugging only.
@@ -626,16 +648,19 @@ void AtlasPlugin::UpdateStates()
       this->fromRobot.pelvis_velocity.n[2] = vel.z;
     }
 
-    this->forceTorqueSensorsMsg.header.stamp =
+    atlas_msgs::ForceTorqueSensors* forceTorqueSensorsMsg =
+      &this->atlasStates.force_torque_sensors;
+
+    forceTorqueSensorsMsg->header.stamp =
       ros::Time(curTime.sec, curTime.nsec);
 
     // get force torque at left ankle and publish
     if (this->lAnkleJoint)
     {
       physics::JointWrench wrench = this->lAnkleJoint->GetForceTorque(0);
-      this->forceTorqueSensorsMsg.l_foot.force.z = wrench.body1Force.z;
-      this->forceTorqueSensorsMsg.l_foot.torque.x = wrench.body1Torque.x;
-      this->forceTorqueSensorsMsg.l_foot.torque.y = wrench.body1Torque.y;
+      forceTorqueSensorsMsg->l_foot.force.z = wrench.body1Force.z;
+      forceTorqueSensorsMsg->l_foot.torque.x = wrench.body1Torque.x;
+      forceTorqueSensorsMsg->l_foot.torque.y = wrench.body1Torque.y;
 
       // AtlasSimInterface: populate foot force torque sensor in fromRobot
       this->fromRobot.foot_sensors[0].fz = wrench.body1Force.z;
@@ -647,9 +672,9 @@ void AtlasPlugin::UpdateStates()
     if (this->rAnkleJoint)
     {
       physics::JointWrench wrench = this->rAnkleJoint->GetForceTorque(0);
-      this->forceTorqueSensorsMsg.r_foot.force.z = wrench.body1Force.z;
-      this->forceTorqueSensorsMsg.r_foot.torque.x = wrench.body1Torque.x;
-      this->forceTorqueSensorsMsg.r_foot.torque.y = wrench.body1Torque.y;
+      forceTorqueSensorsMsg->r_foot.force.z = wrench.body1Force.z;
+      forceTorqueSensorsMsg->r_foot.torque.x = wrench.body1Torque.x;
+      forceTorqueSensorsMsg->r_foot.torque.y = wrench.body1Torque.y;
 
       // AtlasSimInterface: populate foot force torque sensor in fromRobot
       this->fromRobot.foot_sensors[1].fz = wrench.body1Force.z;
@@ -661,12 +686,12 @@ void AtlasPlugin::UpdateStates()
     if (this->lWristJoint)
     {
       physics::JointWrench wrench = this->lWristJoint->GetForceTorque(0);
-      this->forceTorqueSensorsMsg.l_hand.force.x = wrench.body1Force.x;
-      this->forceTorqueSensorsMsg.l_hand.force.y = wrench.body1Force.y;
-      this->forceTorqueSensorsMsg.l_hand.force.z = wrench.body1Force.z;
-      this->forceTorqueSensorsMsg.l_hand.torque.x = wrench.body1Torque.x;
-      this->forceTorqueSensorsMsg.l_hand.torque.y = wrench.body1Torque.y;
-      this->forceTorqueSensorsMsg.l_hand.torque.z = wrench.body1Torque.z;
+      forceTorqueSensorsMsg->l_hand.force.x = wrench.body1Force.x;
+      forceTorqueSensorsMsg->l_hand.force.y = wrench.body1Force.y;
+      forceTorqueSensorsMsg->l_hand.force.z = wrench.body1Force.z;
+      forceTorqueSensorsMsg->l_hand.torque.x = wrench.body1Torque.x;
+      forceTorqueSensorsMsg->l_hand.torque.y = wrench.body1Torque.y;
+      forceTorqueSensorsMsg->l_hand.torque.z = wrench.body1Torque.z;
 
       // AtlasSimInterface: populate wrist force torque sensor in fromRobot
       this->fromRobot.wrist_sensors[0].f.n[0] = wrench.body1Force.x;
@@ -681,12 +706,12 @@ void AtlasPlugin::UpdateStates()
     if (this->rWristJoint)
     {
       physics::JointWrench wrench = this->rWristJoint->GetForceTorque(0);
-      this->forceTorqueSensorsMsg.r_hand.force.x = wrench.body1Force.x;
-      this->forceTorqueSensorsMsg.r_hand.force.y = wrench.body1Force.y;
-      this->forceTorqueSensorsMsg.r_hand.force.z = wrench.body1Force.z;
-      this->forceTorqueSensorsMsg.r_hand.torque.x = wrench.body1Torque.x;
-      this->forceTorqueSensorsMsg.r_hand.torque.y = wrench.body1Torque.y;
-      this->forceTorqueSensorsMsg.r_hand.torque.z = wrench.body1Torque.z;
+      forceTorqueSensorsMsg->r_hand.force.x = wrench.body1Force.x;
+      forceTorqueSensorsMsg->r_hand.force.y = wrench.body1Force.y;
+      forceTorqueSensorsMsg->r_hand.force.z = wrench.body1Force.z;
+      forceTorqueSensorsMsg->r_hand.torque.x = wrench.body1Torque.x;
+      forceTorqueSensorsMsg->r_hand.torque.y = wrench.body1Torque.y;
+      forceTorqueSensorsMsg->r_hand.torque.z = wrench.body1Torque.z;
 
       // AtlasSimInterface: populate wrist force torque sensor in fromRobot
       this->fromRobot.wrist_sensors[1].f.n[0] = wrench.body1Force.x;
@@ -696,15 +721,20 @@ void AtlasPlugin::UpdateStates()
       this->fromRobot.wrist_sensors[1].m.n[1] = wrench.body1Torque.y;
       this->fromRobot.wrist_sensors[1].m.n[2] = wrench.body1Torque.z;
     }
-    this->pubForceTorqueSensors.publish(this->forceTorqueSensorsMsg);
+    this->pubForceTorqueSensors.publish(*forceTorqueSensorsMsg);
+
+    // populate atlasStates from robot
+    this->atlasStates.header.stamp = ros::Time(curTime.sec, curTime.nsec);
 
     // populate jointStates from robot
-    this->jointStates.header.stamp = ros::Time(curTime.sec, curTime.nsec);
+    this->atlasStates.joint_states.header.stamp =
+      ros::Time(curTime.sec, curTime.nsec);
     for (unsigned int i = 0; i < this->joints.size(); ++i)
     {
-      this->jointStates.position[i] = this->joints[i]->GetAngle(0).Radian();
-      this->jointStates.velocity[i] = this->joints[i]->GetVelocity(0);
-      // but wait on publish until we've determined the force to apply
+      this->atlasStates.joint_states.position[i] =
+        this->joints[i]->GetAngle(0).Radian();
+      this->atlasStates.joint_states.velocity[i] =
+        this->joints[i]->GetVelocity(0);
     }
 
     // AtlasSimInterface:
@@ -739,7 +769,7 @@ void AtlasPlugin::UpdateStates()
         double delta2 = delta *
           (this->jointCommandsAge - this->jointCommandsAgeMean);
         this->jointCommandsAgeVariance += delta2;
-        this->jointCommandsAgeVariance -= 
+        this->jointCommandsAgeVariance -=
           this->jointCommandsAgeDelta2Buffer[
           this->jointCommandsAgeBufferIndex];
 
@@ -765,7 +795,8 @@ void AtlasPlugin::UpdateStates()
           this->joints[i]->GetLowStop(0).Radian(),
           this->joints[i]->GetHighStop(0).Radian());
 
-        double q_p = positionTarget - this->jointStates.position[i];
+        double q_p = positionTarget -
+          this->atlasStates.joint_states.position[i];
 
         if (!math::equal(dt, 0.0))
           this->errorTerms[i].d_q_p_dt = (q_p - this->errorTerms[i].q_p) / dt;
@@ -773,7 +804,8 @@ void AtlasPlugin::UpdateStates()
         this->errorTerms[i].q_p = q_p;
 
         this->errorTerms[i].qd_p =
-           this->jointCommands.velocity[i] - this->jointStates.velocity[i];
+          this->jointCommands.velocity[i] -
+          this->atlasStates.joint_states.velocity[i];
 
         this->errorTerms[i].k_i_q_i = math::clamp(
           this->errorTerms[i].k_i_q_i +
@@ -813,7 +845,7 @@ void AtlasPlugin::UpdateStates()
         this->joints[i]->SetForce(0, forceClamped);
 
         // fill in jointState efforts
-        this->jointStates.effort[i] = forceClamped;
+        this->atlasStates.joint_states.effort[i] = forceClamped;
 
         // AtlasSimInterface: fill in fromRobot efforts.
         // FIXME: Is this used by the controller?  i.e. should this happen
@@ -824,13 +856,14 @@ void AtlasPlugin::UpdateStates()
 
     this->lastControllerUpdateTime = curTime;
 
-    this->pubJointStates.publish(this->jointStates);
+    this->pubJointStates.publish(this->atlasStates.joint_states);
+    this->pubAtlasStates.publish(this->atlasStates);
 
     /// controller statistics diagnostics, damages, etc.
     if (this->pubControllerStatistics.getNumSubscribers() > 0)
     {
       if ((curTime - this->lastControllerStatisticsTime).Double() >=
-        1.0/this->updateRate)
+        1.0/this->statsUpdateRate)
       {
         atlas_msgs::ControllerStatistics msg;
         msg.header.stamp = ros::Time(curTime.sec, curTime.nsec);
@@ -854,6 +887,9 @@ void AtlasPlugin::OnLContactUpdate()
   contacts = this->lFootContactSensor->GetContacts();
 
 
+  math::Vector3 fTotal;
+  math::Vector3 tTotal;
+
   for (int i = 0; i < contacts.contact_size(); ++i)
   {
     // gzerr << "Collision between[" << contacts.contact(i).collision1()
@@ -867,8 +903,6 @@ void AtlasPlugin::OnLContactUpdate()
 
     // common::Time contactTime(contacts.contact(i).time().sec(),
     //                          contacts.contact(i).time().nsec());
-    math::Vector3 fTotal;
-    math::Vector3 tTotal;
     for (int j = 0; j < contacts.contact(i).position_size(); ++j)
     {
       // gzerr << j << "  Position:"
@@ -889,20 +923,16 @@ void AtlasPlugin::OnLContactUpdate()
                             contacts.contact(i).wrench(j).body_1_torque().y(),
                             contacts.contact(i).wrench(j).body_1_torque().z());
     }
-    // low pass filter over time
-    double e = 0.99;
-    this->lFootForce = this->lFootForce * e + fTotal * (1.0 - e);
-    this->lFootTorque = this->lFootTorque * e + tTotal * (1.0 - e);
-
-    geometry_msgs::Wrench msg;
-    msg.force.x = this->lFootForce.x;
-    msg.force.y = this->lFootForce.y;
-    msg.force.z = this->lFootForce.z;
-    msg.torque.x = this->lFootTorque.x;
-    msg.torque.y = this->lFootTorque.y;
-    msg.torque.z = this->lFootTorque.z;
-    this->pubLFootContact.publish(msg);
   }
+
+  geometry_msgs::Wrench msg;
+  msg.force.x = fTotal.x;
+  msg.force.y = fTotal.y;
+  msg.force.z = fTotal.z;
+  msg.torque.x = tTotal.x;
+  msg.torque.y = tTotal.y;
+  msg.torque.z = tTotal.z;
+  this->pubLFootContact.publish(msg);
 }
 
 void AtlasPlugin::OnRContactUpdate()
@@ -911,9 +941,15 @@ void AtlasPlugin::OnRContactUpdate()
   msgs::Contacts contacts;
   contacts = this->rFootContactSensor->GetContacts();
 
+  math::Vector3 fTotal;
+  math::Vector3 tTotal;
 
+  // GetContacts returns all contacts on the collision body
   for (int i = 0; i < contacts.contact_size(); ++i)
   {
+    // loop through all contact pairs to sum the total force
+    // on collision1
+
     // gzerr << "Collision between[" << contacts.contact(i).collision1()
     //           << "] and [" << contacts.contact(i).collision2() << "]\n";
     // gzerr << " t[" << this->world->GetSimTime()
@@ -925,10 +961,10 @@ void AtlasPlugin::OnRContactUpdate()
 
     // common::Time contactTime(contacts.contact(i).time().sec(),
     //                          contacts.contact(i).time().nsec());
-    math::Vector3 fTotal;
-    math::Vector3 tTotal;
     for (int j = 0; j < contacts.contact(i).position_size(); ++j)
     {
+      // loop through all contacts between collision1 and collision2
+
       // gzerr << j << "  Position:"
       //       << contacts.contact(i).position(j).x() << " "
       //       << contacts.contact(i).position(j).y() << " "
@@ -947,20 +983,16 @@ void AtlasPlugin::OnRContactUpdate()
                             contacts.contact(i).wrench(j).body_1_torque().y(),
                             contacts.contact(i).wrench(j).body_1_torque().z());
     }
-    // low pass filter over time
-    double e = 0.99;
-    this->rFootForce = this->rFootForce * e + fTotal * (1.0 - e);
-    this->rFootTorque = this->rFootTorque * e + tTotal * (1.0 - e);
-
-    geometry_msgs::Wrench msg;
-    msg.force.x = this->rFootForce.x;
-    msg.force.y = this->rFootForce.y;
-    msg.force.z = this->rFootForce.z;
-    msg.torque.x = this->rFootTorque.x;
-    msg.torque.y = this->rFootTorque.y;
-    msg.torque.z = this->rFootTorque.z;
-    this->pubRFootContact.publish(msg);
   }
+
+  geometry_msgs::Wrench msg;
+  msg.force.x = fTotal.x;
+  msg.force.y = fTotal.y;
+  msg.force.z = fTotal.z;
+  msg.torque.x = tTotal.x;
+  msg.torque.y = tTotal.y;
+  msg.torque.z = tTotal.z;
+  this->pubRFootContact.publish(msg);
 }
 
 void AtlasPlugin::ZeroJointCommands()

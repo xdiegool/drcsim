@@ -56,6 +56,7 @@
 #include <osrf_msgs/JointCommands.h>
 #include <atlas_msgs/ForceTorqueSensors.h>
 #include <atlas_msgs/ControllerStatistics.h>
+#include <atlas_msgs/AtlasStates.h>
 #include <sensor_msgs/JointState.h>
 
 namespace gazebo
@@ -99,7 +100,7 @@ namespace gazebo
 
     /// Throttle update rate
     private: common::Time lastControllerStatisticsTime;
-    private: double updateRate;
+    private: double statsUpdateRate;
 
     // Contact sensors
     private: sensors::ContactSensorPtr lFootContactSensor;
@@ -115,7 +116,9 @@ namespace gazebo
     private: physics::JointPtr rWristJoint;
     private: physics::JointPtr lWristJoint;
 
-    private: atlas_msgs::ForceTorqueSensors forceTorqueSensorsMsg;
+    /// \brief A combined JointStates, IMU and ForceTorqueSensors Message
+    /// for accessing all these states synchronously.
+    private: atlas_msgs::AtlasStates atlasStates;
 
     // IMU sensor
     private: boost::shared_ptr<sensors::ImuSensor> imuSensor;
@@ -139,10 +142,7 @@ namespace gazebo
     private: ros::Publisher pubControllerStatistics;
     private: ros::Publisher pubJointStates;
     private: ros::Publisher pubForceTorqueSensors;
-    private: math::Vector3 lFootForce;
-    private: math::Vector3 lFootTorque;
-    private: math::Vector3 rFootForce;
-    private: math::Vector3 rFootTorque;
+    private: ros::Publisher pubAtlasStates;
 
     private: ros::Subscriber subJointCommands;
     private: void SetJointCommands(

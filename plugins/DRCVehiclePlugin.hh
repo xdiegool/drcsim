@@ -20,12 +20,12 @@
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 
-#include "gazebo/physics/physics.hh"
-#include "gazebo/transport/TransportTypes.hh"
-#include "gazebo/common/Time.hh"
-#include "gazebo/common/Plugin.hh"
-#include "gazebo/common/Events.hh"
-#include "gazebo/common/PID.hh"
+#include <gazebo/physics/physics.hh>
+#include <gazebo/transport/TransportTypes.hh>
+#include <gazebo/common/Time.hh>
+#include <gazebo/common/Plugin.hh>
+#include <gazebo/common/Events.hh>
+#include <gazebo/common/PID.hh>
 
 namespace gazebo
 {
@@ -224,7 +224,6 @@ namespace gazebo
     public: void Init();
 
     private: double GetGasTorqueMultiplier();
-    private: double Saturate(double _data, double _min, double _max);
     private: double get_collision_radius(physics::CollisionPtr _collision);
     private: math::Vector3 get_collision_position(physics::LinkPtr _link,
                                                   unsigned int id);
@@ -239,6 +238,7 @@ namespace gazebo
     private: physics::JointPtr brWheelJoint;
     private: physics::JointPtr flWheelSteeringJoint;
     private: physics::JointPtr frWheelSteeringJoint;
+    private: const double jointDeadbandPercent;
 
     private: double frontTorque;
     private: double backTorque;

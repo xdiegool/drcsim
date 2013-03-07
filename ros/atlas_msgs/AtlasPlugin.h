@@ -57,6 +57,7 @@
 #include <atlas_msgs/ResetControls.h>
 #include <atlas_msgs/ForceTorqueSensors.h>
 #include <atlas_msgs/ControllerStatistics.h>
+#include <atlas_msgs/AtlasStates.h>
 #include <sensor_msgs/JointState.h>
 
 #include <atlas_msgs/Test.h>
@@ -124,7 +125,9 @@ namespace gazebo
     private: physics::JointPtr rWristJoint;
     private: physics::JointPtr lWristJoint;
 
-    private: atlas_msgs::ForceTorqueSensors forceTorqueSensorsMsg;
+    /// \brief A combined JointStates, IMU and ForceTorqueSensors Message
+    /// for accessing all these states synchronously.
+    private: atlas_msgs::AtlasStates atlasStates;
 
     // IMU sensor
     private: boost::shared_ptr<sensors::ImuSensor> imuSensor;
@@ -148,6 +151,7 @@ namespace gazebo
     private: ros::Publisher pubControllerStatistics;
     private: ros::Publisher pubJointStates;
     private: ros::Publisher pubForceTorqueSensors;
+    private: ros::Publisher pubAtlasStates;
 
     private: ros::Subscriber subJointCommands;
 
@@ -215,6 +219,7 @@ namespace gazebo
 
     /// \brief: for keeping track of internal controller update rates.
     private: common::Time lastControllerUpdateTime;
+    private: common::Time lastImuTime;
 
     // controls message age measure
     private: atlas_msgs::ControllerStatistics controllerStatistics;

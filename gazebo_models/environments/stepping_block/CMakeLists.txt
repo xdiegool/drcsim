@@ -1,7 +1,7 @@
 set(MODEL_NAME stepping_block)
 set (files 
   model.config
-  model-1_3.sdf
+  model.sdf
 )
 
 add_subdirectory(meshes)

@@ -31,7 +31,7 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Vector3.h>
-#include <geometry_msgs/Wrench.h>
+#include <geometry_msgs/WrenchStamped.h>
 #include <std_msgs/String.h>
 
 #include <boost/thread.hpp>
@@ -61,6 +61,8 @@
 #include <sensor_msgs/JointState.h>
 
 #include <atlas_msgs/Test.h>
+
+#include "PubQueue.h"
 
 namespace gazebo
 {
@@ -115,7 +117,9 @@ namespace gazebo
     private: sensors::ContactSensorPtr lFootContactSensor;
     private: sensors::ContactSensorPtr rFootContactSensor;
     private: ros::Publisher pubLFootContact;
+    private: PubQueue<geometry_msgs::WrenchStamped>::Ptr pubLFootContactQueue;
     private: ros::Publisher pubRFootContact;
+    private: PubQueue<geometry_msgs::WrenchStamped>::Ptr pubRFootContactQueue;
 
     // Force torque sensors at ankles
     private: physics::JointPtr rAnkleJoint;
@@ -132,8 +136,8 @@ namespace gazebo
     // IMU sensor
     private: boost::shared_ptr<sensors::ImuSensor> imuSensor;
     private: std::string imuLinkName;
-    private: physics::LinkPtr imuLink;
     private: ros::Publisher pubImu;
+    private: PubQueue<sensor_msgs::Imu>::Ptr pubImuQueue;
     private: common::Time lastImuTime;
 
     // AtlasSimInterface: internal debugging only
@@ -152,12 +156,15 @@ namespace gazebo
 
     /// \brief ros publisher for ros controller timing statistics
     private: ros::Publisher pubControllerStatistics;
+    private: PubQueue<atlas_msgs::ControllerStatistics>::Ptr pubControllerStatisticsQueue;
 
     /// \brief ros publisher for force atlas joint states
     private: ros::Publisher pubJointStates;
+    private: PubQueue<sensor_msgs::JointState>::Ptr pubJointStatesQueue;
 
     /// \brief ros publisher for force torque sensors
     private: ros::Publisher pubForceTorqueSensors;
+    private: PubQueue<atlas_msgs::ForceTorqueSensors>::Ptr pubForceTorqueSensorsQueue;
 
     /// \brief ros publisher for atlas states, currently it contains
     /// joint index enums
@@ -165,6 +172,7 @@ namespace gazebo
     /// sensor_msgs::Imu
     /// atlas_msgs::FroceTorqueSensors
     private: ros::Publisher pubAtlasState;
+    private: PubQueue<atlas_msgs::AtlasState>::Ptr pubAtlasStateQueue;
 
     private: ros::Subscriber subJointCommands;
 
@@ -246,6 +254,9 @@ namespace gazebo
     private: void SetExperimentalDampingPID(
       const atlas_msgs::Test::ConstPtr &_msg);
     private: ros::Subscriber subTest;
+
+    // ros publish multi queue, prevents publish() blocking
+    private: PubMultiQueue pmq;
   };
 }
 #endif

@@ -23,6 +23,12 @@
 
 #include "AtlasPlugin.h"
 
+// publish separate /atlas/imu topic, to be deprecated
+#include "sensor_msgs/Imu.h"
+
+// publish separate /atlas/force_torque_sensors topic, to be deprecated
+#include <atlas_msgs/ForceTorqueSensors.h>
+
 using std::string;
 
 namespace gazebo
@@ -41,18 +47,22 @@ AtlasPlugin::AtlasPlugin()
 
   // initialize behavior library
   this->atlasSimInterface = create_atlas_sim_interface();
-  this->usingWalkingController = false;
 
   // good set of initial values
-  static const double strideSagittalDefault = 0.23;
-  static const double strideCoronalDefault  = 0.12;
-  static const double strideDurationDefault = 0.63;
-  static const double walkYawRateDefault    = 0.0;
+  static const double strideSagittalDefault    = 0.00;
+  static const double strideCoronalDefault     = 0.12;
+  static const double strideDurationDefault    = 0.63;
+  static const double walkYawRateDefault       = 0.0;
+  static const double footLiftThresholdDefault = -0.02;
 
-  this->strideSagittal = strideSagittalDefault;
-  this->strideCoronal  = strideCoronalDefault;
-  this->strideDuration = strideDurationDefault;
-  this->walkYawRate    = walkYawRateDefault;
+  this->footLiftThreshold = footLiftThresholdDefault;
+  this->strideSagittal    = strideSagittalDefault;
+  this->strideCoronal     = strideCoronalDefault;
+  this->strideDuration    = strideDurationDefault;
+  this->walkYawRate       = walkYawRateDefault;
+
+  // default controller state is PID only, AtlasSimInterface off by default.
+  this->activeGoal.params.behavior = atlas_msgs::AtlasSimInterface::NONE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -139,7 +149,7 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   for (unsigned int i = 0; i < this->joints.size(); ++i)
   {
     msgs::JointCmd msg;
-    msg.set_name(this->joints[i]->GetScopedName()); 
+    msg.set_name(this->joints[i]->GetScopedName());
     msg.mutable_position()->set_target(0.0);
     msg.mutable_position()->set_p_gain(0.0);
     msg.mutable_position()->set_i_gain(0.0);
@@ -285,12 +295,11 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   singlestep->desired_step.step_index = 1;
   singlestep->desired_step.foot_index = 0;
   singlestep->desired_step.duration = this->strideDuration;
-  singlestep->desired_step.position = AtlasVec3f(1, 0, 0);
+  singlestep->desired_step.position = AtlasVec3f(0, 0, 0);
   singlestep->desired_step.yaw = 0;
 
   AtlasBehaviorMultiStepWalkParams* multistep =
     &this->fromRobot.multistep_walk_params;
-
   multistep->use_demo_walk = false;
 
   for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS; ++stepId)
@@ -305,9 +314,15 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   // AtlasSimInterface:
   // Calling into the behavior library to reset controls and set startup
   // behavior.
-  this->errorCode = this->atlasSimInterface->reset_control();
-  this->errorCode = this->atlasSimInterface->set_desired_behavior("stand-prep");
-  // this->errorCode = this->atlasSimInterface->set_desired_behavior("walk");
+  int errorCode;
+  errorCode = this->atlasSimInterface->reset_control();
+  if (errorCode != NO_ERRORS)
+    ROS_ERROR("AtlasSimInterface: reset controls on startup failed with "
+              "error code (%d).", errorCode);
+  errorCode = this->atlasSimInterface->set_desired_behavior("none");
+  if (errorCode != NO_ERRORS)
+    ROS_ERROR("AtlasSimInterface: setting mode none on startup failed with "
+              "error code (%d).", errorCode);
 
   // AtlasSimInterface: Get pelvis link for internal debugging only
   this->pelvisLink = this->model->GetLink(this->pelvisLinkName);
@@ -364,6 +379,13 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
     boost::bind(&AtlasPlugin::DeferredLoad, this));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+void AtlasPlugin::Pause(
+  const std_msgs::String::ConstPtr &_msg)
+{
+  boost::mutex::scoped_lock lock(this->pauseMutex);
+  this->pause.notify_one();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::SetAtlasCommand(
@@ -457,7 +479,6 @@ void AtlasPlugin::SetJointCommands(
   const osrf_msgs::JointCommands::ConstPtr &_msg)
 {
   boost::mutex::scoped_lock lock(this->mutex);
-
   this->UpdateJointCommands(*_msg);
 }
 
@@ -604,13 +625,15 @@ void AtlasPlugin::DeferredLoad()
   this->pubImuQueue = this->pmq.addPub<sensor_msgs::Imu>();
 
   // publish separate /atlas/force_torque_sensors topic, to be deprecated
+  this->pubForceTorqueSensorsQueue =
+    this->pmq.addPub<atlas_msgs::ForceTorqueSensors>();
   this->pubForceTorqueSensors =
     this->rosNode->advertise<atlas_msgs::ForceTorqueSensors>(
     "atlas/force_torque_sensors", 10);
-  this->pubForceTorqueSensorsQueue = this->pmq.addPub<atlas_msgs::ForceTorqueSensors>();
 
   // ros publication / subscription
-  this->pubControllerStatisticsQueue = this->pmq.addPub<atlas_msgs::ControllerStatistics>();
+  this->pubControllerStatisticsQueue =
+    this->pmq.addPub<atlas_msgs::ControllerStatistics>();
   this->pubControllerStatistics =
     this->rosNode->advertise<atlas_msgs::ControllerStatistics>(
     "atlas/controller_statistics", 10);
@@ -619,15 +642,24 @@ void AtlasPlugin::DeferredLoad()
   this->pubLFootContact =
     this->rosNode->advertise<geometry_msgs::WrenchStamped>(
       "atlas/debug/l_foot_contact", 10);
-
   this->pubLFootContactQueue = this->pmq.addPub<geometry_msgs::WrenchStamped>();
 
   // these topics are used for debugging only
   this->pubRFootContact =
     this->rosNode->advertise<geometry_msgs::WrenchStamped>(
       "atlas/debug/r_foot_contact", 10);
-
   this->pubRFootContactQueue = this->pmq.addPub<geometry_msgs::WrenchStamped>();
+
+  // ros topic subscribtions
+  ros::SubscribeOptions pauseSo =
+    ros::SubscribeOptions::create<std_msgs::String>(
+    "atlas/pause", 1,
+    boost::bind(&AtlasPlugin::Pause, this, _1),
+    ros::VoidPtr(), &this->rosQueue);
+  pauseSo.transport_hints =
+    ros::TransportHints().unreliable().reliable().tcpNoDelay(true);
+  this->subPause =
+    this->rosNode->subscribe(pauseSo);
 
   // ros topic subscribtions
   ros::SubscribeOptions atlasCommandSo =
@@ -700,6 +732,15 @@ void AtlasPlugin::DeferredLoad()
     ros::VoidPtr(), &this->rosQueue);
   this->subAtlasControlMode = this->rosNode->subscribe(atlasControlModeSo);
 
+  // actionlib simple action server
+  this->actionServer = new ActionServer(*this->rosNode, "atlas/bdi_control",
+    false);
+
+  this->actionServer->registerGoalCallback(
+    boost::bind(&AtlasPlugin::ActionServerCallback, this));
+
+  this->actionServer->start();
+
   // ros callback queue for processing subscription
   this->callbackQueeuThread = boost::thread(
     boost::bind(&AtlasPlugin::RosQueueThread, this));
@@ -723,6 +764,357 @@ void AtlasPlugin::DeferredLoad()
   this->resetControlsService = this->rosNode->advertiseService(
     resetControlsAso);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+void AtlasPlugin::ActionServerCallback()
+{
+  // actionlib simple action server
+  // lock and set mode and params
+  boost::mutex::scoped_lock lock(this->actionServerMutex);
+
+  // When accepteNewGoal() is called, active goal (if any) is automatically
+  // preempted.
+  this->activeGoal = *this->actionServer->acceptNewGoal();
+
+  switch (this->activeGoal.params.behavior)
+  {
+    case atlas_msgs::AtlasSimInterface::NONE:
+      {
+        // is this an effective way to switch back to PID control
+        // from bdi controller that uses feedforward torques?
+        ROS_INFO("AtlasSimInterface: set control mode to none.");
+        // revert to PID control
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("none");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          this->actionServerResult.success = true;
+          this->actionServer->setSucceeded(this->actionServerResult);
+        }
+        else
+        {
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::PID_OFF:
+      {
+        ROS_INFO("Set PID gains to zero.");
+        this->ZeroAtlasCommand();
+        this->actionServerResult.success = true;
+        this->actionServer->setSucceeded(this->actionServerResult);
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::RELOAD_PID:
+      {
+        ROS_INFO("Reload PID gains from param server.");
+        this->LoadPIDGainsFromParameter();
+        this->actionServerResult.success = true;
+        this->actionServer->setSucceeded(this->actionServerResult);
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::SAFETY:
+      {
+        ROS_INFO("AtlasSimInterface: safety mode.");
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("safety");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          this->actionServerResult.success = true;
+          this->actionServer->setSucceeded(this->actionServerResult);
+        }
+        else
+        {
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::STAND_PREP:
+      {
+        ROS_INFO("AtlasSimInterface: stand-prep mode.");
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("stand-prep");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          this->actionServerResult.success = true;
+          this->actionServer->setSucceeded(this->actionServerResult);
+        }
+        else
+        {
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::DEMO1:
+      {
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("walk");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          ROS_INFO("AtlasSimInterface: starting multi-step mode.");
+          // set goal's use_demo_walk to false
+          AtlasBehaviorMultiStepWalkParams* multistep =
+            &this->fromRobot.multistep_walk_params;
+          multistep->use_demo_walk = false;
+
+          // setup initial step buffer
+          for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS; ++stepId)
+          {
+            unsigned int isRight = stepId % 2;
+            multistep->step_data[stepId].step_index = stepId + 1;
+            multistep->step_data[stepId].foot_index = (unsigned int)isRight;
+            multistep->step_data[stepId].duration = this->strideDuration;
+            double stepX = static_cast<double>(stepId + 1)*this->strideSagittal;
+            double stepY = this->strideCoronal;
+            if (isRight)
+              multistep->step_data[stepId].position =
+                AtlasVec3f(stepX, -stepY, 0);
+            else
+              multistep->step_data[stepId].position =
+                AtlasVec3f(stepX, stepY, 0);
+            multistep->step_data[stepId].yaw = 0;
+          }
+        }
+        else
+        {
+          ROS_INFO("AtlasSimInterface: set multi-step mode failed, error code "
+                   "(%d).", this->actionServerResult.end_state.error_code);
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::MULTI_STEP_WALK:
+      {
+        // make a copy of the goal trajectory
+        this->stepTrajectory.resize(
+          this->activeGoal.params.multistep_walk_params.size());
+        std::copy(this->activeGoal.params.multistep_walk_params.begin(),
+                  this->activeGoal.params.multistep_walk_params.end(),
+                  this->stepTrajectory.begin());
+
+        // check trajectory length
+        if (this->stepTrajectory.size() == 0)
+        {
+          ROS_WARN("AtlasSimInterface: set multi-step mode failed, "
+                   " zero trajectory length, aborting action, "
+                   " switching to stand");
+          this->actionServerResult.end_state.error_code =
+            this->atlasSimInterface->set_desired_behavior("stand");
+          this->activeGoal.params.behavior =
+            atlas_msgs::AtlasSimInterface::STAND;
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+          break;
+        }
+        else if (this->stepTrajectory.size() < NUM_MULTISTEP_WALK_STEPS)
+        {
+          /// \TODO: test this
+          ROS_INFO("fill trajectory shorter than 4 with zeros.");
+          for (unsigned int i = this->stepTrajectory.size();
+               i < NUM_MULTISTEP_WALK_STEPS; ++i)
+          {
+            atlas_msgs::AtlasBehaviorStepParams step;
+            this->stepTrajectory.push_back(step);
+          }
+        }
+
+        // get current location of the robot in its internal
+        // odometry frame
+        {
+          // call process_control_input once to get toRobot
+          // with internal state, so we know where we are in
+          // the robot's internal odometry.
+          this->actionServerResult.end_state.error_code =
+            this->atlasSimInterface->process_control_input(
+            this->fromRobot, this->toRobot);
+
+          // get current foot placement
+          this->currentPelvisPosition = math::Vector3(
+            this->toRobot.pos_est.position.n[0],
+            this->toRobot.pos_est.position.n[1],
+            this->toRobot.pos_est.position.n[2]);
+          this->currentLFootPosition = math::Vector3(
+            this->toRobot.foot_pos_est[0].n[0],
+            this->toRobot.foot_pos_est[0].n[1],
+            this->toRobot.foot_pos_est[0].n[2]);
+          this->currentRFootPosition = math::Vector3(
+            this->toRobot.foot_pos_est[1].n[0],
+            this->toRobot.foot_pos_est[1].n[1],
+            this->toRobot.foot_pos_est[1].n[2]);
+
+          // deduce current orientation from feet location relative
+          // to pelvis.
+          math::Vector3 dr = currentRFootPosition - currentLFootPosition;
+          gzerr << dr << "\n";
+          double currentOrientation = atan2(dr.x, -dr.y);
+
+          // try to create current odometry pose, but ideally we would like
+          // this from the controller.
+          this->bdiOdometryFrame = math::Pose(currentPelvisPosition,
+            math::Quaternion(0, 0, currentOrientation));
+
+          // gzdbg <<   "current position pelvis["
+          //       << this->currentPelvisPosition
+          //       << "] current position l_foot["
+          //       << this->currentLFootPosition
+          //       << "] current position r_root["
+          //       << this->currentRFootPosition
+          //       << "] orientation [" << currentOrientation
+          //       << "]\n";
+        }
+
+        // convert trajectory to local coordinate frame
+        for (unsigned int i = 0; i < this->stepTrajectory.size(); ++i)
+        {
+          // find current orientation
+          // regard current position as 0,0 and current orientation
+          this->stepTrajectory[i].pose = this->ToPose(
+            this->ToPose(this->stepTrajectory[i].pose) +
+            this->bdiOdometryFrame);
+        }
+
+        // trajectory checks out, carry on
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("walk");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          ROS_INFO("AtlasSimInterface: starting multi-step mode.");
+          // set goal's use_demo_walk to false
+          AtlasBehaviorMultiStepWalkParams* curStep =
+            &this->fromRobot.multistep_walk_params;
+          curStep->use_demo_walk = false;
+
+          // initialize buffer with first 4 steps
+          for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS;
+               ++stepId)
+          {
+            curStep->step_data[stepId].step_index =
+              this->stepTrajectory[stepId].step_index;
+            curStep->step_data[stepId].foot_index =
+              this->stepTrajectory[stepId].foot_index;
+            curStep->step_data[stepId].duration =
+              this->stepTrajectory[stepId].duration;
+            curStep->step_data[stepId].position =
+              this->ToVec3(this->stepTrajectory[stepId].pose.position);
+            curStep->step_data[stepId].yaw = this->ToPose(
+              this->stepTrajectory[stepId].pose).rot.GetAsEuler().z;
+
+            gzdbg << "  building stepId : " << stepId
+                  << "  step_index["
+                  << curStep->step_data[stepId].step_index
+                  << "]  isRight["
+                  << this->stepTrajectory[stepId].foot_index
+                  << "]  pos ["
+                  << curStep->step_data[stepId].position.n[0]
+                  << "]\n";
+          }
+        }
+        else
+        {
+          ROS_INFO("AtlasSimInterface: set multi-step mode failed, error code "
+                   "(%d).", this->actionServerResult.end_state.error_code);
+          this->actionServerResult.end_state.error_code =
+            this->atlasSimInterface->set_desired_behavior("walk");
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::DEMO2:
+      {
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("walk");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          ROS_INFO("AtlasSimInterface: starting multi-step demo (figure 8).");
+          // set goal's use_demo_walk to true
+          AtlasBehaviorMultiStepWalkParams* multistep =
+            &this->fromRobot.multistep_walk_params;
+          multistep->use_demo_walk = true;
+
+        }
+        else
+        {
+          ROS_INFO("AtlasSimInterface: set multi-step mode failed, error code "
+                   "(%d).", this->actionServerResult.end_state.error_code);
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::SINGLE_STEP_WALK:
+      {
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("step");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          ROS_INFO("AtlasSimInterface: starting single-step mode.");
+          ROS_WARN(" Single step mode (not yet implemented).");
+        }
+        else
+        {
+          ROS_INFO("AtlasSimInterface: set single-step mode failed, error code "
+                   "(%d).", this->actionServerResult.end_state.error_code);
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::STAND:
+      {
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->set_desired_behavior("stand");
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          ROS_INFO("AtlasSimInterface: starting stand mode.");
+          this->actionServer->setSucceeded(this->actionServerResult);
+        }
+        else
+        {
+          ROS_INFO("AtlasSimInterface: set stand mode failed, error code "
+                   "(%d).", this->actionServerResult.end_state.error_code);
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    case atlas_msgs::AtlasSimInterface::RESET:
+      {
+        this->ZeroAtlasCommand();
+        this->actionServerResult.end_state.error_code =
+          this->atlasSimInterface->reset_control();
+        if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+        {
+          ROS_INFO("AtlasSimInterface: reset successful.");
+          this->actionServer->setSucceeded(this->actionServerResult);
+        }
+        else
+        {
+          ROS_INFO("AtlasSimInterface: reset failed, error code "
+                   "(%d).", this->actionServerResult.end_state.error_code);
+          this->actionServerResult.success = false;
+          this->actionServer->setAborted(this->actionServerResult);
+        }
+      }
+      break;
+    default:
+        ROS_WARN("Walking param mode not recognized, see "
+                 "atlas_msgs/AtlasSimInterface.msg for options.");
+      break;
+  }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 bool AtlasPlugin::ResetControls(atlas_msgs::ResetControls::Request &_req,
@@ -758,28 +1150,65 @@ void AtlasPlugin::OnRobotMode(const std_msgs::String::ConstPtr &_mode)
   //  * after robot hits ground, switch over to stand mode
   //  * robot should dynamically balance itself
 
+  boost::mutex::scoped_lock lock(this->actionServerMutex);
+
   // simple state machine here to do something
   if (_mode->data == "safety" || _mode->data == "stand-prep" ||
       _mode->data == "stand" || _mode->data == "walk")
   {
     // start AtlasSimLibrary controller
     // this mode resets the timer, and automatically goes into stand mode
-    // after 
-    this->usingWalkingController = true;
-    this->atlasSimInterface->set_desired_behavior(_mode->data);
+    // after
+    ROS_WARN("controllign AtlasSimInteface library over /atlas/control_mode "
+             "is deprecated, please switch to uisng "
+             "ROS action server on /atlas/bdi_control.  For more "
+             "information on actions, see http://ros.org/wiki/actionlib.");
+
+    if (_mode->data == "safety")
+    {
+      this->activeGoal.params.behavior =
+        atlas_msgs::AtlasSimInterface::SAFETY;
+    }
+    else if (_mode->data == "stand-prep")
+    {
+      this->activeGoal.params.behavior =
+        atlas_msgs::AtlasSimInterface::STAND_PREP;
+    }
+    else if (_mode->data == "stand")
+    {
+      this->activeGoal.params.behavior =
+        atlas_msgs::AtlasSimInterface::STAND;
+
+    }
+    else if (_mode->data == "walk")
+    {
+      this->activeGoal.params.behavior =
+        atlas_msgs::AtlasSimInterface::DEMO1;
+    }
+
+    this->actionServerResult.end_state.error_code =
+      this->atlasSimInterface->set_desired_behavior(_mode->data);
+    if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+      ROS_INFO("AtlasSimInterface: %s mode fine.", _mode->data.c_str());
+    else
+      ROS_INFO("AtlasSimInterface: %s mode faile with code (%d).",
+               _mode->data.c_str(),
+               this->actionServerResult.end_state.error_code);
+
     this->ZeroAtlasCommand();
+
+    // initialize walk data
     if (_mode->data == "walk")
     {
       AtlasBehaviorMultiStepWalkParams* multistep =
         &this->fromRobot.multistep_walk_params;
-
       multistep->use_demo_walk = false;
 
       for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS; ++stepId)
       {
         int isRight = stepId % 2;
         multistep->step_data[stepId].step_index = stepId + 1;
-        multistep->step_data[stepId].foot_index = (int)isRight;
+        multistep->step_data[stepId].foot_index = (unsigned int)isRight;
         multistep->step_data[stepId].duration = this->strideDuration;
         double stepX = static_cast<double>(stepId + 1)*this->strideSagittal;
         double stepY = this->strideCoronal;
@@ -795,8 +1224,17 @@ void AtlasPlugin::OnRobotMode(const std_msgs::String::ConstPtr &_mode)
   {
     // revert to PID control
     this->LoadPIDGainsFromParameter();
-    this->usingWalkingController = false;
-    this->atlasSimInterface->set_desired_behavior(_mode->data);
+    this->activeGoal.params.behavior =
+      atlas_msgs::AtlasSimInterface::NONE;
+    this->atlasSimInterface->set_desired_behavior("none");
+  }
+  else if (_mode->data == "ragdoll")
+  {
+    // revert to PID control
+    this->ZeroAtlasCommand();
+    this->activeGoal.params.behavior =
+      atlas_msgs::AtlasSimInterface::NONE;
+    this->atlasSimInterface->set_desired_behavior("none");
   }
   else
   {
@@ -807,15 +1245,10 @@ void AtlasPlugin::OnRobotMode(const std_msgs::String::ConstPtr &_mode)
 ////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::UpdateStates()
 {
-  static unsigned int count = 0;
-
   common::Time curTime = this->world->GetSimTime();
 
   if (curTime > this->lastControllerUpdateTime)
   {
-
-    // test turn off repeatedly
-    // this->fromRobot.multistep_walk_params.use_demo_walk = false;
 
     // AtlasSimInterface:
     // populate fromRobot from robot
@@ -1017,7 +1450,8 @@ void AtlasPlugin::UpdateStates()
       this->fromRobot.wrist_sensors[1].m.n[2] = wrench.body1Torque.z;
     }
     // publish separate /atlas/force_torque_sensors topic, to be deprecated
-    this->pubForceTorqueSensorsQueue->push(forceTorqueSensorsMsg, this->pubForceTorqueSensors);
+    this->pubForceTorqueSensorsQueue->push(forceTorqueSensorsMsg,
+      this->pubForceTorqueSensors);
 
     // populate atlasState from robot
     this->atlasState.header.stamp = ros::Time(curTime.sec, curTime.nsec);
@@ -1046,68 +1480,302 @@ void AtlasPlugin::UpdateStates()
               this->jointStates.velocity.begin());
 
     // AtlasSimInterface:
-    if (this->usingWalkingController)
     {
-      // process data fromRobot to create output data toRobot
-      this->errorCode = this->atlasSimInterface->process_control_input(
-        this->fromRobot, this->toRobot);
+      boost::mutex::scoped_lock lock(this->actionServerMutex);
 
       std::string mode;
-      this->errorCode = this->atlasSimInterface->get_desired_behavior(mode);
+      this->actionServerResult.end_state.error_code =
+        this->atlasSimInterface->get_desired_behavior(mode);
 
-      if (mode == "walk")
+      if (this->actionServerResult.end_state.error_code != NO_ERRORS)
       {
-        unsigned int currentStepIndex = this->toRobot.current_step_index + 1;
-        AtlasBehaviorMultiStepWalkParams* multistep =
-          &this->fromRobot.multistep_walk_params;
-
-        if (currentStepIndex + 1 != multistep->step_data[0].step_index)
-        {
-          if (count == 0)
-            gzerr << "current step [" << currentStepIndex
-                  << "] count [" << count
-                  << "]\n";
-          ++count;
-          if ((currentStepIndex == 1 && count > 1064) ||
-              (currentStepIndex == 2 && count >  400) ||
-              (currentStepIndex >= 3 && count >  200))
-          {
-            for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS;
-                 ++stepId)
-            {
-              multistep->step_data[stepId].step_index =
-                stepId +1+ currentStepIndex;
-              int isRight = (stepId + currentStepIndex) % 2;
-              multistep->step_data[stepId].foot_index = (unsigned int)(isRight);
-              multistep->step_data[stepId].duration = this->strideDuration;
-              double stepX = 
-                static_cast<double>(stepId + 1 + currentStepIndex) *
-                this->strideSagittal;
-              double stepY = this->strideCoronal;
-
-              double yaw = this->walkYawRate * 
-                static_cast<double>(stepId + 1 + currentStepIndex);
-              multistep->step_data[stepId].yaw = yaw;
-
-              if (isRight)
-                multistep->step_data[stepId].position =
-                  AtlasVec3f(stepX, -stepY, 0);
-              else
-                multistep->step_data[stepId].position =
-                  AtlasVec3f(stepX, stepY, 0);
-
-              gzerr << "  building stepId : " << stepId
-                    << "  step_index[" << stepId + 1 + currentStepIndex
-                    << "]  isRight[" << isRight
-                    << "]  step x[" << stepX
-                    << "]  count[" << count
-                    << "]\n";
-            }
-            count = 0;
-          }
-        }
+        ROS_ERROR("AtlasSimInterface: get_desired_behavior failed with "
+                  "error code (%d), controller update skipped.",
+                  this->actionServerResult.end_state.error_code);
+        this->actionServerResult.success = false;
+        this->actionServer->setAborted(this->actionServerResult);
       }
+      else switch (this->activeGoal.params.behavior)
+      {
+        case atlas_msgs::AtlasSimInterface::SAFETY:
+        case atlas_msgs::AtlasSimInterface::STAND_PREP:
+        case atlas_msgs::AtlasSimInterface::STAND:
+          {
+            // process data fromRobot to create output data toRobot
+            this->actionServerResult.end_state.error_code =
+              this->atlasSimInterface->process_control_input(
+              this->fromRobot, this->toRobot);
 
+            if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+            {
+              // stuff data from toRobot into actionServerFeedback.
+              this->UpdateActionServerStateFeedback();
+            }
+            else
+            {
+              ROS_WARN("AtlasSimInterface: failed with error code (%d) when "
+                       "setting mode (%d) in update loop. Switching to "
+                       "stand mode",
+                       this->actionServerResult.end_state.error_code,
+                       this->activeGoal.params.behavior);
+              this->actionServerResult.success = false;
+              this->actionServer->setAborted(this->actionServerResult);
+            }
+          }
+          break;
+        case atlas_msgs::AtlasSimInterface::DEMO2:
+          {
+            // process data fromRobot to create output data toRobot
+            this->actionServerResult.end_state.error_code =
+              this->atlasSimInterface->process_control_input(
+              this->fromRobot, this->toRobot);
+
+            // stuff data from toRobot into actionServerFeedback.
+            this->UpdateActionServerStateFeedback();
+
+            // save typing
+            unsigned int currentStepIndex =
+              this->actionServerFeedback.state.current_step_index + 1;
+
+            // gzdbg << currentStepIndex << " : "
+            //       << this->actionServerResult.end_state.error_code
+            //       << "\n";
+
+            /// \TODO: detect when demo finishes, switch to stand and end action
+            static const unsigned int demo2Steps = 47;
+            if (currentStepIndex >= demo2Steps)
+            {
+              ROS_INFO("AtlasSimInterface: demo2 finished, going into stand.");
+              this->activeGoal.params.behavior =
+                atlas_msgs::AtlasSimInterface::STAND;
+              this->actionServerResult.end_state.error_code =
+                this->atlasSimInterface->set_desired_behavior("stand");
+              this->actionServerResult.success = true;
+              this->actionServer->setSucceeded(this->actionServerResult);
+            }
+          }
+          break;
+        case atlas_msgs::AtlasSimInterface::DEMO1:
+          {
+            // process data fromRobot to create output data toRobot
+            this->actionServerResult.end_state.error_code =
+              this->atlasSimInterface->process_control_input(
+              this->fromRobot, this->toRobot);
+
+            // stuff data from toRobot into actionServerFeedback.
+            this->UpdateActionServerStateFeedback();
+
+            // save typing
+            unsigned int currentStepIndex =
+              this->actionServerFeedback.state.current_step_index + 1;
+
+            // sanity check
+            if (mode != "walk")
+              ROS_ERROR("mode[%s], but we are in walk mode?", mode.c_str());
+
+            // roll out trajectory, update fromRobot.multistep_walk_params
+            // get pointer to current walking param
+            AtlasBehaviorMultiStepWalkParams* curStep =
+              &this->fromRobot.multistep_walk_params;
+
+            // gzdbg << currentStepIndex << " : "
+            //       << curStep->step_data[0].step_index
+            //       << "\n";
+
+            // Update trajectory buffer
+            if (currentStepIndex + 1 != curStep->step_data[0].step_index)
+            {
+              unsigned int foot_index =
+                  curStep->step_data[0].foot_index;
+
+              // gzdbg << "next step [" << currentStepIndex + 1
+              //       << "] foot [" << 0
+              //       << "] z [" << this->toRobot.foot_pos_est[0].n[2]
+              //       << "] foot [" << 1
+              //       << "] z [" << this->toRobot.foot_pos_est[1].n[2]
+              //       << "]\n";
+
+              if (this->toRobot.foot_pos_est[foot_index].n[2] >
+                  this->footLiftThreshold)
+              {
+                for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS;
+                     ++stepId)
+                {
+                  curStep->step_data[stepId].step_index =
+                    stepId +1+ currentStepIndex;
+                  unsigned int isRight = (stepId + currentStepIndex) % 2;
+                  curStep->step_data[stepId].foot_index =
+                    (unsigned int)(isRight);
+                  curStep->step_data[stepId].duration = this->strideDuration;
+                  double stepX =
+                    static_cast<double>(stepId + 1 + currentStepIndex) *
+                    this->strideSagittal;
+                  double stepY = this->strideCoronal;
+
+                  double yaw = this->walkYawRate *
+                    static_cast<double>(stepId + 1 + currentStepIndex);
+                  curStep->step_data[stepId].yaw = yaw;
+
+                  if (isRight)
+                    curStep->step_data[stepId].position =
+                      AtlasVec3f(stepX, -stepY, 0);
+                  else
+                    curStep->step_data[stepId].position =
+                      AtlasVec3f(stepX, stepY, 0);
+
+                  // gzdbg << "  building stepId : " << stepId
+                  //       << "  step_index[" << stepId + 1 + currentStepIndex
+                  //       << "]  isRight[" << isRight
+                  //       << "]  step x[" << stepX
+                  //       << "]\n";
+                }
+              }
+            }
+          }
+          break;
+        case atlas_msgs::AtlasSimInterface::MULTI_STEP_WALK:
+          {
+            // process data fromRobot to create output data toRobot
+            this->actionServerResult.end_state.error_code =
+              this->atlasSimInterface->process_control_input(
+              this->fromRobot, this->toRobot);
+
+            // stuff data from toRobot into actionServerFeedback.
+            this->UpdateActionServerStateFeedback();
+
+            // save typing
+            unsigned int currentStepIndex =
+              this->actionServerFeedback.state.current_step_index + 1;
+
+            // sanity check
+            if (mode != "walk")
+              ROS_ERROR("mode[%s], but we are in walk mode?", mode.c_str());
+
+            // roll out trajectory, update fromRobot.multistep_walk_params
+            // get pointer to current walking param
+            AtlasBehaviorMultiStepWalkParams* curStep =
+              &this->fromRobot.multistep_walk_params;
+
+            // gzdbg << currentStepIndex << " : "
+            //       << curStep->step_data[0].step_index
+            //       << " size: "
+            //       << this->stepTrajectory.size()
+            //       << " err: "
+            //       << this->actionServerResult.end_state.error_code
+            //       << "\n";
+
+            if (currentStepIndex >= this->stepTrajectory.size() + 1)
+            {
+              // end of trajectory
+              ROS_INFO("AtlasSimInterface: multi-step mode finished "
+                       " successfully, switching to stand");
+              this->actionServerResult.end_state.error_code =
+                this->atlasSimInterface->set_desired_behavior("stand");
+              this->activeGoal.params.behavior =
+                atlas_msgs::AtlasSimInterface::STAND;
+              this->actionServerResult.success = true;
+              this->actionServer->setSucceeded(this->actionServerResult);
+              break;
+            }
+               
+            // Update trajectory buffer
+            // by unrolling from local copy of step trajectory
+            if (currentStepIndex + 1 != curStep->step_data[0].step_index)
+            {
+              unsigned int foot_index =
+                  curStep->step_data[0].foot_index;
+
+              // gzdbg << "next step [" << currentStepIndex + 1
+              //       << "] foot [" << 0
+              //       << "] z [" << this->toRobot.foot_pos_est[0].n[2]
+              //       << "] foot [" << 1
+              //       << "] z [" << this->toRobot.foot_pos_est[1].n[2]
+              //       << "]\n";
+
+              if (this->toRobot.foot_pos_est[foot_index].n[2] >
+                  this->footLiftThreshold)
+              {
+                for (unsigned stepId = 0; stepId < NUM_MULTISTEP_WALK_STEPS;
+                     ++stepId)
+                {
+                  unsigned int curStepId = stepId + 0 + currentStepIndex;
+
+                  // no more steps, duplcate last step for same foot in buffer
+                  while (curStepId >= this->stepTrajectory.size())
+                    curStepId -= 2;
+
+                  curStep->step_data[stepId].step_index =
+                    stepId + 1 + currentStepIndex;
+                  curStep->step_data[stepId].foot_index =
+                    this->stepTrajectory[curStepId].foot_index;
+                  curStep->step_data[stepId].duration =
+                    this->stepTrajectory[curStepId].duration;
+                  curStep->step_data[stepId].position =
+                    this->ToVec3(this->stepTrajectory[curStepId].pose.position);
+                  curStep->step_data[stepId].yaw = this->ToPose(
+                    this->stepTrajectory[curStepId].pose).rot.GetAsEuler().z;
+
+                  // gzdbg << "  building stepId : " << stepId
+                  //       << "  traj id [" << curStepId
+                  //       << "] step_index["
+                  //       << curStep->step_data[stepId].step_index
+                  //       << "]  isRight["
+                  //       << curStep->step_data[stepId].foot_index
+                  //       << "]  pos ["
+                  //       << curStep->step_data[stepId].position.n[0]
+                  //       << ", "
+                  //       << curStep->step_data[stepId].position.n[1]
+                  //       << "]\n";
+                }
+              }
+            }
+          }
+          break;
+        case atlas_msgs::AtlasSimInterface::SINGLE_STEP_WALK:
+          {
+            // process data fromRobot to create output data toRobot
+            this->actionServerResult.end_state.error_code =
+              this->atlasSimInterface->process_control_input(
+              this->fromRobot, this->toRobot);
+
+            this->UpdateActionServerStateFeedback();
+
+            if (this->actionServerResult.end_state.error_code == NO_ERRORS)
+            {
+              ROS_DEBUG("AtlasSimInterface: performing single-step mode.");
+              this->activeGoal.params.behavior =
+                atlas_msgs::AtlasSimInterface::SINGLE_STEP_WALK;
+            }
+            else if (false)  /// \TODO: check step termination
+            {
+              ROS_DEBUG("AtlasSimInterface: single-step finished fine.");
+              this->activeGoal.params.behavior =
+                atlas_msgs::AtlasSimInterface::STAND;
+              this->actionServerResult.end_state.error_code =
+                this->atlasSimInterface->set_desired_behavior("stand");
+            }
+            else
+            {
+              ROS_DEBUG("AtlasSimInterface: single-step failed with error "
+                        "code (%d).",
+                        this->actionServerResult.end_state.error_code);
+              this->activeGoal.params.behavior =
+                atlas_msgs::AtlasSimInterface::STAND;
+              this->actionServerResult.end_state.error_code =
+                this->atlasSimInterface->set_desired_behavior("stand");
+              if (this->actionServerResult.end_state.error_code != NO_ERRORS)
+                ROS_DEBUG("AtlasSimInterface: single-step switch to stand "
+                          "failed with error code (%d)",
+                          this->actionServerResult.end_state.error_code);
+              this->actionServerResult.success = false;
+              this->actionServer->setAborted(this->actionServerResult);
+            }
+          }
+          break;
+        default:
+          // do nothing here
+          break;
+      }
     }
 
     double dt = (curTime - this->lastControllerUpdateTime).Double();
@@ -1243,6 +1911,62 @@ void AtlasPlugin::UpdateStates()
       }
     }
   }
+
+  // EXPERIMENTAL: wait for controller publication?
+  // {
+  //   boost::mutex::scoped_lock lock(this->pauseMutex);
+  //   // pause.wait(lock);
+  //   boost::system_time timeout = boost::get_system_time() +
+  //     boost::posix_time::milliseconds(0.5);
+  //   pause.timed_wait(lock, timeout);
+  // }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void AtlasPlugin::UpdateActionServerStateFeedback()
+{
+  // populate AtlasSimInterfaceState.msg and publish it
+  this->actionServerFeedback.state.error_code =
+    this->actionServerResult.end_state.error_code;
+
+  this->actionServerFeedback.state.current_step_index =
+    this->toRobot.current_step_index;
+
+  this->actionServerFeedback.state.pelvis_position.x =
+    this->toRobot.pos_est.position.n[0];
+  this->actionServerFeedback.state.pelvis_position.y =
+    this->toRobot.pos_est.position.n[1];
+  this->actionServerFeedback.state.pelvis_position.z =
+    this->toRobot.pos_est.position.n[2];
+
+  this->actionServerFeedback.state.pelvis_velocity.x =
+    this->toRobot.pos_est.velocity.n[0];
+  this->actionServerFeedback.state.pelvis_velocity.y =
+    this->toRobot.pos_est.velocity.n[1];
+  this->actionServerFeedback.state.pelvis_velocity.z =
+    this->toRobot.pos_est.velocity.n[1];
+
+  /// \TODO: this gets the positions, but not orientations
+  this->actionServerFeedback.state.foot_pose_est[0].position.x =
+    this->toRobot.foot_pos_est[0].n[0];
+  this->actionServerFeedback.state.foot_pose_est[0].position.y =
+    this->toRobot.foot_pos_est[0].n[1];
+  this->actionServerFeedback.state.foot_pose_est[0].position.z =
+    this->toRobot.foot_pos_est[0].n[2];
+
+  /// \TODO: this gets the positions, but not orientations
+  this->actionServerFeedback.state.foot_pose_est[1].position.x =
+    this->toRobot.foot_pos_est[1].n[0];
+  this->actionServerFeedback.state.foot_pose_est[1].position.y =
+    this->toRobot.foot_pos_est[1].n[1];
+  this->actionServerFeedback.state.foot_pose_est[1].position.z =
+    this->toRobot.foot_pos_est[1].n[2];
+
+  this->actionServerFeedback.state.current_step_index =
+    this->toRobot.current_step_index;
+
+  if (this->actionServer->isActive())
+    this->actionServer->publishFeedback(this->actionServerFeedback);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

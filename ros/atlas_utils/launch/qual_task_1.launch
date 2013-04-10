@@ -8,6 +8,9 @@
   <!-- start gazebo with the Atlas -->
   <include file="$(find atlas_utils)/launch/atlas_no_controllers.launch">
     <arg name="gzname" value="$(arg gzname)"/>
+<!-- TODO: temporary disable since it kills real time factor 0.66 -> 0.24
+    <arg name="extra_gazebo_args" value="-r" />
+-->
     <arg name="gzworld" value="$(arg gzworld)"/>
   </include>
 
@@ -31,10 +34,4 @@
     <param name="publish_frequency" type="double" value="50.0" />
     <remap from="joint_states" to="/sandia_hands/r_hand/joint_states" />
   </node>
-
-  <!-- set the robot to stand position -->
-  <!--
-  <node pkg="altas_utils" type="stand.py" name="stand" />
-  <node pkg="altas_msgs" type="atlas_actions" name="atlas_actions" />
-  -->
 </launch>

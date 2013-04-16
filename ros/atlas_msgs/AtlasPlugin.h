@@ -369,6 +369,10 @@ namespace gazebo
 
     // ros publish multi queue, prevents publish() blocking
     private: PubMultiQueue pmq;
+
+    // \brief: Whether development aids (aka "cheats") are enabled.
+    // Controlled via the `cheatsEnabled` SDF element in this plugin.
+    private: bool cheatsEnabled;
   };
 }
 #endif

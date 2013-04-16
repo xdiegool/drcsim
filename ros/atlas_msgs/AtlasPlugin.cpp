@@ -73,6 +73,23 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
                                  sdf::ElementPtr _sdf)
 {
   this->model = _parent;
+  // save sdf
+  this->sdf = _sdf;
+
+  // Read options
+  if (this->sdf->HasElement("cheatsEnabled"))
+  {
+    // I tried to retrieve cheatsEnabled as a bool, but that didn't work.
+    // Retrieving it as a String seems to correctly give me "0" or "1."
+    std::string cheatsEnabledString = 
+      this->sdf->GetValueString("cheatsEnabled");
+    if (cheatsEnabledString == "1")
+      this->cheatsEnabled = true;
+    else
+      this->cheatsEnabled = false;
+  }
+  else
+    this->cheatsEnabled = false;
 
   // Get the world name.
   this->world = this->model->GetWorld();
@@ -83,9 +100,6 @@ void AtlasPlugin::Load(physics::ModelPtr _parent,
   this->node->Init(this->model->GetWorld()->GetName());
   this->jointCmdPub = this->node->Advertise<msgs::JointCmd>(
       std::string("~/") + this->model->GetName() + "/joint_cmd");
-
-  // save sdf
-  this->sdf = _sdf;
 
   // initialize update time
   this->lastControllerUpdateTime = this->world->GetSimTime();
@@ -732,29 +746,6 @@ void AtlasPlugin::DeferredLoad()
     this->rosNode->advertise<atlas_msgs::ControllerStatistics>(
     "atlas/controller_statistics", 10);
 
-  // these topics are used for debugging only
-  this->pubLFootContact =
-    this->rosNode->advertise<geometry_msgs::WrenchStamped>(
-      "atlas/debug/l_foot_contact", 10);
-  this->pubLFootContactQueue = this->pmq.addPub<geometry_msgs::WrenchStamped>();
-
-  // these topics are used for debugging only
-  this->pubRFootContact =
-    this->rosNode->advertise<geometry_msgs::WrenchStamped>(
-      "atlas/debug/r_foot_contact", 10);
-  this->pubRFootContactQueue = this->pmq.addPub<geometry_msgs::WrenchStamped>();
-
-  // ros topic subscribtions
-  ros::SubscribeOptions pauseSo =
-    ros::SubscribeOptions::create<std_msgs::String>(
-    "atlas/pause", 1,
-    boost::bind(&AtlasPlugin::Pause, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  pauseSo.transport_hints =
-    ros::TransportHints().unreliable().reliable().tcpNoDelay(true);
-  this->subPause =
-    this->rosNode->subscribe(pauseSo);
-
   // ros topic subscribtions
   ros::SubscribeOptions atlasCommandSo =
     ros::SubscribeOptions::create<atlas_msgs::AtlasCommand>(
@@ -787,14 +778,6 @@ void AtlasPlugin::DeferredLoad()
     ros::TransportHints().reliable().tcpNoDelay(true);
   this->subJointCommands =
     this->rosNode->subscribe(jointCommandsSo);
-
-  // ros topic subscribtions
-  ros::SubscribeOptions testSo =
-    ros::SubscribeOptions::create<atlas_msgs::Test>(
-    "atlas/debug/test", 1,
-    boost::bind(&AtlasPlugin::SetExperimentalDampingPID, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->subTest = this->rosNode->subscribe(testSo);
 
   // initialize status pub time
   this->lastControllerStatisticsTime = this->world->GetSimTime().Double();
@@ -867,6 +850,40 @@ void AtlasPlugin::DeferredLoad()
         ros::VoidPtr(), &this->rosQueue);
   this->resetControlsService = this->rosNode->advertiseService(
     resetControlsAso);
+
+  if (this->cheatsEnabled)
+  {
+    // these topics are used for debugging only
+    this->pubLFootContact =
+      this->rosNode->advertise<geometry_msgs::WrenchStamped>(
+        "atlas/debug/l_foot_contact", 10);
+    this->pubLFootContactQueue = this->pmq.addPub<geometry_msgs::WrenchStamped>();
+  
+    // these topics are used for debugging only
+    this->pubRFootContact =
+      this->rosNode->advertise<geometry_msgs::WrenchStamped>(
+        "atlas/debug/r_foot_contact", 10);
+    this->pubRFootContactQueue = this->pmq.addPub<geometry_msgs::WrenchStamped>();
+  
+    // ros topic subscribtions
+    ros::SubscribeOptions pauseSo =
+      ros::SubscribeOptions::create<std_msgs::String>(
+      "atlas/pause", 1,
+      boost::bind(&AtlasPlugin::Pause, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    pauseSo.transport_hints =
+      ros::TransportHints().unreliable().reliable().tcpNoDelay(true);
+    this->subPause =
+      this->rosNode->subscribe(pauseSo);
+
+    // ros topic subscribtions
+    ros::SubscribeOptions testSo =
+      ros::SubscribeOptions::create<atlas_msgs::Test>(
+      "atlas/debug/test", 1,
+      boost::bind(&AtlasPlugin::SetExperimentalDampingPID, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->subTest = this->rosNode->subscribe(testSo);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1417,6 +1434,9 @@ void AtlasPlugin::UpdateStates()
 ////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::OnLContactUpdate()
 {
+  if (!this->cheatsEnabled)
+    return;
+
   // Get all the contacts.
   msgs::Contacts contacts;
   contacts = this->lFootContactSensor->GetContacts();
@@ -1476,6 +1496,9 @@ void AtlasPlugin::OnLContactUpdate()
 ////////////////////////////////////////////////////////////////////////////////
 void AtlasPlugin::OnRContactUpdate()
 {
+  if (!this->cheatsEnabled)
+    return;
+
   // Get all the contacts.
   msgs::Contacts contacts;
   contacts = this->rFootContactSensor->GetContacts();

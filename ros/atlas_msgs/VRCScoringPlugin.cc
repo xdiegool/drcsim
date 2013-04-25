@@ -134,7 +134,6 @@ void VRCScoringPlugin::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
     // \todo getenv is not portable, and there is no generic cross-platform
     // method. Must check OS and choose a method
     char *homePath = getenv("HOME");
-    GZ_ASSERT(homePath, "HOME environment variable is missing");
 
     if (!homePath)
       this->scoreFilePath = boost::filesystem::path("/tmp/gazebo");
@@ -220,9 +219,25 @@ bool VRCScoringPlugin::CheckNextGate()
 {
   if (this->nextGate != this->gates.end())
   {
-    int gateSide = this->IsPoseInGate(this->atlas->GetWorldPose(),
-                                     this->nextGate->pose,
-                                     this->nextGate->width);
+    // Get the pose of the robot or the vehicle, depending on the type of the
+    // gate.
+    math::Pose pose;
+    switch (this->nextGate->type)
+    {
+      case Gate::PEDESTRIAN:
+        pose = this->atlas->GetWorldPose();
+        break;
+      case Gate::VEHICLE:
+        pose = this->vehicle->GetWorldPose();
+        break;
+      default:
+        GZ_ASSERT(false, "Unknown gate type");
+    }
+    // Figure whether we're positioned before (-1), after (1), or
+    // neither (0), with respect to the gate.
+    int gateSide = this->IsPoseInGate(pose,
+                                      this->nextGate->pose,
+                                      this->nextGate->width);
     // Did we go forward through the gate?
     if ((this->nextGateSide < 0) && (gateSide > 0))
     {
@@ -230,7 +245,7 @@ bool VRCScoringPlugin::CheckNextGate()
         this->nextGate->number << std::endl;
       // Update state to look for the next gate
       ++this->nextGate;
-      this->nextGateSide = -1;
+      this->nextGateSide = 0;
       return true;
     }
     else
@@ -308,20 +323,167 @@ bool VRCScoringPlugin::CheckFall(const common::Time &_currTime)
 }
 
 /////////////////////////////////////////////////
+bool VRCScoringPlugin::CheckHoseOffTable()
+{
+  // Check that the height of the hose couple is within a few cm
+  // of the standpipe.
+  math::Vector3 standpipePosition = this->standpipe->GetWorldPose().pos;
+  math::Vector3 hoseCouplerPosition = this->hoseCoupler->GetWorldPose().pos;
+  if (hoseCouplerPosition.z >= (standpipePosition.z - 0.05))
+  {
+    gzlog << "Successfully picked hose up off table" << std::endl;
+    return true;
+  }
+  else
+    return false;
+}
+
+/////////////////////////////////////////////////
+bool VRCScoringPlugin::CheckHoseAligned()
+{
+  // Check that the screw joint between the hose coupler and standpipe exists.
+  // That's true only when they're aligned (handled in VRCPlugin.cpp).
+  // We check indirectly by looking for a non-empty set of child links attached
+  // to the standpipe.
+  physics::Link_V childJointsLinks = this->standpipe->GetChildJointsLinks();
+  if (!childJointsLinks.empty())
+  {
+    // If we were not previously aligned, latch the current pose for later
+    // comparison to determine that rotation has succeeded.
+    if (!this->isHoseAligned)
+    {
+      gzlog << "Successfully aligned the hose with the standpipe" << std::endl;
+      this->hoseCouplerAlignedPose = this->hoseCoupler->GetWorldPose();
+      this->isHoseAligned = true;
+      this->isHoseConnected = false;
+    }
+    return true;
+  }
+  else
+  {
+    if (this->isHoseAligned)
+    {
+      gzlog << "Unaligned the hose from the standpipe" << std::endl;
+      this->isHoseAligned = false;
+      this->isHoseConnected = false;
+    }
+    return false;
+  }
+}
+
+/////////////////////////////////////////////////
+bool VRCScoringPlugin::CheckHoseConnected()
+{
+  // Must be aligned (i.e., the screw joint must exist)
+  if (!this->isHoseAligned)
+    return false;
+
+  // Check for a sufficient change in coupler position along its X axis,
+  // which indicates that the hose coupler has threaded on to the standpipe
+  // screw joint.
+
+  // Transform current position into frame of initial aligned pose
+  math::Vector3 couplerWorldPosition = this->hoseCoupler->GetWorldPose().pos; 
+  math::Vector3 couplerLocalPosition =
+    this->hoseCouplerAlignedPose.rot.GetInverse().RotateVector(
+      couplerWorldPosition - this->hoseCouplerAlignedPose.pos);
+  double dist = couplerLocalPosition.x;
+  // Maximum depth is 2cm; let's get most of the way there.
+  if (dist <= -0.015)
+  {
+    if (!this->isHoseConnected)
+    {
+      gzlog << "Successfully connected the hose to the standpipe" << std::endl;
+      // TODO: latch valve position
+      this->isHoseConnected = true;
+    }
+    return true;
+  }
+  else
+  {
+    if (this->isHoseConnected)
+    {
+      gzlog << "Disconnected the hose to the standpipe" << std::endl;
+      this->isHoseConnected = false;
+    }
+    return false;
+  }
+}
+
+/////////////////////////////////////////////////
+bool VRCScoringPlugin::CheckValveOpen()
+{
+  // Doesn't count unless the hose is connected.  This check doesn't
+  // prevent out-of-order task execution; that should be done in
+  // the VRCPlugin, which should not allow alignment when the valve is open.
+  if (!this->isHoseConnected)
+    return false;
+
+  // The valve starts at 0 and can be turned CCW several rotations.
+  // We check that it's been turned at least one rotation.
+  if (this->valve->GetAngle(0) < math::Angle(-2.0*M_PI))
+  {
+    gzlog << "Successfully opened valve" << std::endl;
+    return true;
+  }
+  else
+    return false;
+}
+
+/////////////////////////////////////////////////
 void VRCScoringPlugin::OnUpdate(const common::UpdateInfo &_info)
 {
   // Did we pass through a gate?
   if (this->IsGateBased() && this->CheckNextGate())
     this->completionScore += 1;
 
-  // Did we put the drill in the bin?
-  if (this->worldType == QUAL_2 && this->CheckDrillInBin())
-    this->completionScore += 1;
+  if (this->worldType == QUAL_2)
+  {
+    if (this->completionScore == 0)
+    {
+      // Did we put the drill in the bin?
+      if (this->CheckDrillInBin())
+        this->completionScore += 1;
+    }
+  }
+  else if (this->worldType == VRC_3)
+  {
+    // Check for alignment and connection every cycle, because the
+    // competitor might align/connect and unalign/disconnect the hose
+    // multiple times.
+    bool hoseAligned = this->CheckHoseAligned();
+    bool hoseConnected = this->CheckHoseConnected();
+
+    if (this->completionScore == 0)
+    {
+      // Step 1: Did we get the hose up off the table?
+      if (this->CheckHoseOffTable())
+        this->completionScore += 1;
+    }
+    else if (this->completionScore == 1)
+    {
+      // Step 2: Did we align the hose?
+      if (hoseAligned)
+        this->completionScore += 1;
+    }
+    else if (this->completionScore == 2)
+    {
+      // Step 3: Did we connect the hose?
+      if (hoseConnected)
+        this->completionScore += 1;
+    }
+    else if (this->completionScore == 3)
+    {
+      // Step 3: Did we turn the valve?
+      if (this->CheckValveOpen())
+        this->completionScore += 1;
+    }
+  }
 
   // Did we fall?
   if (this->CheckFall(_info.simTime))
     this->falls += 1;
-  
+
   // Write score data (it's throttled internally to write at a fixed rate)
   this->WriteIntermediateScore(_info.simTime, false);
 }
@@ -349,7 +511,7 @@ bool VRCScoringPlugin::FindQual2Stuff()
     gzerr << "Failed to find bin link" << std::endl;
     return false;
   }
-  physics::CollisionPtr bottomCollision = 
+  physics::CollisionPtr bottomCollision =
     binLink->GetCollision("bottom_collision");
   if (!bottomCollision)
   {
@@ -357,7 +519,7 @@ bool VRCScoringPlugin::FindQual2Stuff()
     return false;
   }
   math::Box bottomBbox = bottomCollision->GetBoundingBox();
-  physics::CollisionPtr side1Collision = 
+  physics::CollisionPtr side1Collision =
     binLink->GetCollision("side1_collision");
   if (!side1Collision)
   {
@@ -388,13 +550,55 @@ bool VRCScoringPlugin::FindVRC1Stuff()
   }
   if (!this->FindGates())
     return false;
-  return false;
+  return true;
 }
 
 /////////////////////////////////////////////////
 bool VRCScoringPlugin::FindVRC3Stuff()
 {
-  return false;
+  physics::ModelPtr hose = this->world->GetModel("vrc_firehose_long");
+  if (!hose)
+  {
+    gzerr << "Failed to find hose" << std::endl;
+    return false;
+  }
+  this->hoseCoupler = hose->GetLink("coupling");
+  if (!this->hoseCoupler)
+  {
+    gzerr << "Failed to find hose coupler" << std::endl;
+    return false;
+  }
+
+  physics::ModelPtr standpipeModel = this->world->GetModel("standpipe");
+  if (!standpipeModel)
+  {
+    gzerr << "Failed to find standpipe model" << std::endl;
+    return false;
+  }
+  this->standpipe = standpipeModel->GetLink("standpipe");
+  if (!this->standpipe)
+  {
+    gzerr << "Failed to find standpipe link" << std::endl;
+    return false;
+  }
+
+  physics::ModelPtr valveModel = this->world->GetModel("valve");
+  if (!valveModel)
+  {
+    gzerr << "Failed to find valve model" << std::endl;
+    return false;
+  }
+  this->valve = valveModel->GetJoint("valve");
+  if (!this->valve)
+  {
+    gzerr << "Failed to find valve joint" << std::endl;
+    return false;
+  }
+
+  this->isHoseAligned = false;
+  this->isHoseConnected = false;
+
+  return true;
 }
 
 /////////////////////////////////////////////////
@@ -406,12 +610,13 @@ bool VRCScoringPlugin::FindGates()
        it != models.end();
        ++it)
   {
-    // Parse the name, assuming that gates are named 'gate_<int>'
+    // Parse the name, assuming that gates are named '[vehicle]gate_<int>'
     physics::ModelPtr model = *it;
     std::string name = model->GetName();
     std::vector<std::string> parts;
     boost::split(parts, name, boost::is_any_of("_"));
-    if (parts.size() == 2 && parts[0] == "gate")
+    if (parts.size() == 2 &&
+        ((parts[0] == "gate") || (parts[0] == "vehiclegate")))
     {
       // Parse out the number; skip if it fails
       unsigned int gateNum;
@@ -431,11 +636,18 @@ bool VRCScoringPlugin::FindGates()
       math::Vector3 bboxSize = bbox.GetSize();
       double gateWidth = std::max(bboxSize.x, bboxSize.y);
 
+      Gate::GateType gateType;
+      if (parts[0] == "vehiclegate")
+        gateType = Gate::VEHICLE;
+      else
+        gateType = Gate::PEDESTRIAN;
+
       // Store this gate
-      Gate g(name, gateNum, model->GetWorldPose(), gateWidth);
+      Gate g(name, gateType, gateNum, model->GetWorldPose(), gateWidth);
       this->gates.push_back(g);
-      gzlog << "Stored gate named " << g.name << " with index " << g.number
-        << " at pose " << g.pose << " and width " << g.width << std::endl;
+      gzlog << "Stored gate named " << g.name << " of type " << g.type
+        << " with index " << g.number << " at pose " << g.pose
+        << " and width " << g.width << std::endl;
     }
   }
 

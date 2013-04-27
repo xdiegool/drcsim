@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <boost/thread/mutex.hpp>
+#include <boost/unordered/unordered_map.hpp>
 
 #include <ros/ros.h>
 #include <ros/callback_queue.h>
@@ -56,8 +57,18 @@
 
 namespace gazebo
 {
+  namespace physics {
+    class Collision;
+  }
+
   class SandiaHandPlugin : public ModelPlugin
   {
+    public: enum HandEnum
+    {
+      LEFT_HAND,
+      RIGHT_HAND
+    };
+
     /// \brief Constructor
     public: SandiaHandPlugin();
 
@@ -79,6 +90,17 @@ namespace gazebo
     private: void CopyVectorIfValid(const std::vector<double> &from,
                                     std::vector<double> &to,
                                     const unsigned joint_offset);
+
+    /// \brief Callback for contact messages from right hand
+    private: void OnRContacts(ConstContactsPtr &_msg);
+
+    /// \brief Callback for contact messages from left hand
+    private: void OnLContacts(ConstContactsPtr &_msg);
+
+    typedef std::list<boost::shared_ptr<msgs::Contacts const> > ContactMsgs_L;
+    private: void FillTactileData(HandEnum _side,
+        ContactMsgs_L _incomingContacts,
+        sandia_hand_msgs::RawTactile *_tactileMsg);
 
     private: physics::WorldPtr world;
     private: physics::ModelPtr model;
@@ -104,6 +126,12 @@ namespace gazebo
     private: math::Vector3 rightImuLastLinearVel;
     private: ros::Publisher pubRightImu;
     private: PubQueue<sensor_msgs::Imu>::Ptr pubRightImuQueue;
+
+    // tactile sensor
+    private: ros::Publisher pubLeftTactile;
+    private: ros::Publisher pubRightTactile;
+    private: PubQueue<sandia_hand_msgs::RawTactile>::Ptr pubRightTactileQueue;
+    private: PubQueue<sandia_hand_msgs::RawTactile>::Ptr pubLeftTactileQueue;
 
     // deferred loading in case ros is blocking
     private: sdf::ElementPtr sdf;
@@ -139,6 +167,9 @@ namespace gazebo
     private: sensor_msgs::JointState leftJointStates;
     private: sensor_msgs::JointState rightJointStates;
 
+    private: sandia_hand_msgs::RawTactile leftTactile;
+    private: sandia_hand_msgs::RawTactile rightTactile;
+
     // Controls stuff
     private: common::Time lastControllerUpdateTime;
 
@@ -147,6 +178,34 @@ namespace gazebo
 
     // flag to indicate that stumps are in use
     private: bool hasStumps;
+
+    /// \brief Subscription to contact messages
+    private: transport::SubscriberPtr contactSub[2];
+
+    private: ContactMsgs_L incomingRContacts;
+
+    private: ContactMsgs_L incomingLContacts;
+
+    /// \brief Transport node used for subscribing to contact sensor messages.
+    private: transport::NodePtr node;
+
+    /// \brief Mutex to protect reads and writes.
+    private: mutable boost::mutex contactRMutex;
+
+    /// \brief Mutex to protect reads and writes.
+    private: mutable boost::mutex contactLMutex;
+
+    private: boost::unordered_map<std::string, physics::Collision *>
+                contactCollisions;
+
+    private: double fingerFLength[2];
+
+    private: double fingerFWidth[2];
+
+    private: int fingerFHor[2];
+
+    private: int fingerFVer[2];
+
   };
 /** \} */
 /// @}

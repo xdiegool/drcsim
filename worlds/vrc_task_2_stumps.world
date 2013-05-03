@@ -266,7 +266,7 @@
     </model>
 -->
 
-    <plugin filename="libRubblePlugin.so" name="rubble">
+<!--    <plugin filename="libRubblePlugin.so" name="rubble">
       <bottom_right>4 7.0 0.0</bottom_right>
       <top_left>10 17 0.4</top_left>
       <min_size>0.05 0.05 0.05</min_size>
@@ -274,7 +274,208 @@
       <min_mass>0.1</min_mass>
       <max_mass>1.0</max_mass>
       <count>50</count>
-    </plugin>
+    </plugin> -->
+
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block</name>
+      <pose>5.000000 12.554800 0.000000 1.57 0.000000 1.000000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_0</name>
+      <pose>8.000000 13.571900 0.000000 0.000000 0.000000 0.200000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_1</name>
+      <pose>8.000000 11.000000 0.000000 0.000000 1.57 -1.300000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_2</name>
+      <pose>6.000000 11.000000 0.000000 0.000000 1.57 0.200000</pose>
+    </include>
+        <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_3</name>
+      <pose>5.417030 14.528900 0.000000 1.57 0.000000 0.050000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_4</name>
+      <pose>7.443130 15.000000 0.000000 0.000000 1.57 0.800000</pose>
+    </include>
+        <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_5</name>
+      <pose>7.000000 12.487500 0.000000 0.000000 0.000000 2.000000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_6</name>
+      <pose>8.000000 8.000000 0.000000 0.000000 0.000000 3.000000</pose>
+    </include>
+        <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_7</name>
+      <pose>5.000000 8.000000 0.000000 0.000000 1.57 -2.00000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_8</name>
+      <pose>10.000000 14.000000 0.000000 1.57 0.000000 -0.500000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_9</name>
+      <pose>7.000000 9.000000 0.000000 0.000000 0.000000 2.60000</pose>
+    </include>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_10</name>
+      <pose>4.000000 16.452500 0.000000 0.000000 0.000000 1.200000</pose>
+    </include>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_11</name>
+      <pose>4.443480 9.510620 0.000000 1.57 0.000000 0.000000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_12</name>
+      <pose>9.000000 16.000000 0.000000 0.000000 0.000000 0.300000</pose>
+    </include>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_13</name>
+      <pose>4.520650 16.000000 0.000000 0.000000 0.000000 0.100000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_14</name>
+      <pose>10.000000 12.528900 0.000000 1.57 0.000000 1.000000</pose>
+    </include>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_15</name>
+      <pose>8.000000 9.579940 0.000000 0.000000 0.000000 0.000000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_16</name>
+      <pose>5.000000 16.000000 0.000000 0.000000 0.000000 0.800000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_17</name>
+      <pose>5.000000 16.594800 0.000000 0.000000 1.57 -0.800000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_18</name>
+      <pose>5.000000 11.000000 0.000000 0.000000 0.000000 -0.00500</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_19</name>
+      <pose>8.000000 7.586660 0.000000 0.000000 1.57 0.50000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_20</name>
+      <pose>3.530910 8.500470 0.000000 0.000000 0.000000 -0.100000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_21</name>
+      <pose>9.000000 8.598240 0.000000 0.000000 1.57 2.300000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_22</name>
+      <pose>9.000000 15.402400 0.000000 0.000000 0.000000 2.800000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_23</name>
+      <pose>5.000000 14.000000 0.000000 0.000000 1.57 -1.900000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_24</name>
+      <pose>8.000000 12.000000 0.000000 0.000000 0.000000 1.900000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_25</name>
+      <pose>10.000000 13.000000 0.000000 0.000000 0.000000 0.300000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_26</name>
+      <pose>5.000000 7.000000 0.000000 0.000000 0.000000 0.100000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_27</name>
+      <pose>7.421570 9.000000 0.000000 0.000000 0.000000 0.000000</pose>
+    </include>
+    <include>
+      <uri>model://cinder_block</uri>
+      <name>cinder_block_28</name>
+      <pose>4.000000 10.000000 0.000000 0.000000 0.000000 1.200000</pose>
+    </include>
+
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier</name>
+      <pose>3.486150 -19.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_0</name>
+      <pose>3.486150 -13.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_1</name>
+      <pose>-3.000000 -13.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_2</name>
+      <pose>-3.000000 -19.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_3</name>
+      <pose>10.000000 15.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_4</name>
+      <pose>3.000000 15.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_5</name>
+      <pose>3.000000 10.0 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_6</name>
+      <pose>10 10.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
+    <include>
+      <uri>model://jersey_barrier</uri>
+      <name>jersey_barrier_7</name>
+      <pose>10.000000 15.000000 0.000000 0.000000 0.000000 1.57</pose>
+    </include>
 
     <include>
       <uri>model://atlas_sandia_hands_stumps</uri>

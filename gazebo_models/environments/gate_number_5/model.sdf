@@ -19,6 +19,6 @@
           </mesh>
         </geometry>
       </visual>
-    </link> 
+    </link>
   </model>
 </sdf>

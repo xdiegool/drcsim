@@ -17,6 +17,7 @@
 
 #include <map>
 #include <string>
+#include <stdlib.h>
 
 #include "VRCPlugin.h"
 
@@ -52,6 +53,13 @@ void VRCPlugin::Load(physics::WorldPtr _parent, sdf::ElementPtr _sdf)
   // save pointers
   this->world = _parent;
   this->sdf = _sdf;
+
+  // By default, cheats are off.  Allow override via environment variable.
+  char* cheatsEnabledString = getenv("VRC_CHEATS_ENABLED");
+  if (cheatsEnabledString && (std::string(cheatsEnabledString) == "1"))
+    this->cheatsEnabled = true;
+  else
+    this->cheatsEnabled = false;
 
   // ros callback queue for processing subscription
   this->deferredLoadThread = boost::thread(
@@ -107,11 +115,11 @@ void VRCPlugin::DeferredLoad()
     {
       this->SetRobotMode("pinned");
       this->atlas.startupHarness = true;
-      ROS_INFO("Start robot with gravity turned off and harnessed.");
+      ROS_DEBUG("Start robot with gravity turned off and harnessed.");
       if (math::equal(this->atlas.startupHarnessDuration, 0.0))
-        ROS_INFO("Atlas will stay pinned.");
+        ROS_DEBUG("Atlas will stay pinned.");
       else
-        ROS_INFO("Resume to nominal mode after %f seconds.",
+        ROS_DEBUG("Resume to nominal mode after %f seconds.",
           this->atlas.startupHarnessDuration);
     }
   }
@@ -389,7 +397,8 @@ physics::JointPtr VRCPlugin::AddJoint(physics::WorldPtr _world,
                                       std::string _type,
                                       math::Vector3 _anchor,
                                       math::Vector3 _axis,
-                                      double _upper, double _lower)
+                                      double _upper, double _lower,
+                                      bool _disableCollision)
 {
   physics::JointPtr joint = _world->GetPhysicsEngine()->CreateJoint(
     _type, _model);
@@ -410,13 +419,17 @@ physics::JointPtr VRCPlugin::AddJoint(physics::WorldPtr _world,
                               _link2->GetName() + std::string("_joint"));
   joint->Init();
 
-/*
+
   // disable collision between the link pair
-  if (_link1)
-    _link1->SetCollideMode("fixed");
-  if (_link2)
-    _link2->SetCollideMode("fixed");
-*/
+  if (_disableCollision)
+  {
+    if (_link1)
+      _link1->SetCollideMode("fixed");
+    if (_link2)
+      _link2->SetCollideMode("fixed");
+  }
+
+
   return joint;
 }
 
@@ -708,7 +721,7 @@ void VRCPlugin::FireHose::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
   this->fireHoseModel = _world->GetModel(fireHoseModelName);
   if (!this->fireHoseModel)
   {
-    ROS_INFO("fire_hose_model [%s] not found", fireHoseModelName.c_str());
+    ROS_DEBUG("fire_hose_model [%s] not found", fireHoseModelName.c_str());
     return;
   }
   this->initialFireHosePose = this->fireHoseModel->GetWorldPose();
@@ -746,6 +759,30 @@ void VRCPlugin::FireHose::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
     return;
   }
 
+  // Get the valve model and its joint
+  std::string valveModelName;
+  if (sdf->HasElement("valve_model"))
+    valveModelName = sdf->GetValueString("valve_model");
+  else
+    valveModelName = "valve";
+  this->valveModel = _world->GetModel(valveModelName);
+  if (!this->valveModel)
+  {
+    ROS_ERROR("valve model [%s] not found", valveModelName.c_str());
+    return;
+  }
+  std::string valveJointName;
+  if (sdf->HasElement("valve_joint"))
+    valveJointName = sdf->GetValueString("valve_joint");
+  else
+    valveJointName = "valve";
+  this->valveJoint = this->valveModel->GetJoint(valveJointName);
+  if (!this->valveJoint)
+  {
+    ROS_ERROR("valve joint [%s] not found", valveJointName.c_str());
+    return;
+  }
+
   this->threadPitch = sdf->GetValueDouble("thread_pitch");
 
   this->couplingRelativePose = sdf->GetValuePose("coupling_relative_pose");
@@ -754,6 +791,17 @@ void VRCPlugin::FireHose::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
   this->SetInitialConfiguration();
 
   this->isInitialized = true;
+}
+
+void VRCPlugin::FireHose::SetInitialConfiguration()
+{
+  // this does not work yet, because SetAngle only works for Hinge and Slider
+  // joints, and fire hose is made of universal and ball joints.
+  for (unsigned int i = 0; i < this->fireHoseJoints.size(); ++i)
+  {
+    gzerr << "joint [" << this->fireHoseJoints[i]->GetName() << "]\n";
+    this->fireHoseJoints[i]->SetAngle(0u, 0.0);
+  }
 }
 
 void VRCPlugin::CheckThreadStart()
@@ -773,6 +821,8 @@ void VRCPlugin::CheckThreadStart()
   double rotErr = (relativePose.rot.GetZAxis() -
                    connectPose.rot.GetZAxis()).GetLength();
 
+  // gzdbg << " connectPose [" << connectPose << "]\n";
+  // gzdbg << " relativePose [" << relativePose << "]\n";
   // gzdbg << "connect offset [" << connectOffset
   //       << "] xyz [" << posErr
   //       << "] rpy [" << rotErr
@@ -780,7 +830,12 @@ void VRCPlugin::CheckThreadStart()
 
   if (!this->drcFireHose.screwJoint)
   {
-    if (posErr < 0.01 && rotErr < 0.01)
+    // Check that the hose coupler is positioned within tolerance
+    // and that the valve is not opened, because the water rushing out
+    // would prevent you from attaching a hose.  This check also
+    // prevents out-of-order execution that would confuse scoring in
+    // VRCScoringPlugin.
+    if (posErr < 0.01 && rotErr < 0.01 && this->drcFireHose.valveJoint->GetAngle(0) > -0.1)
     {
       this->drcFireHose.screwJoint =
         this->AddJoint(this->world, this->drcFireHose.fireHoseModel,
@@ -788,16 +843,20 @@ void VRCPlugin::CheckThreadStart()
                        this->drcFireHose.couplingLink,
                        "screw",
                        math::Vector3(0, 0, 0),
-                       math::Vector3(0, 0, 1),
-                       20.0/1000, -0.5/1000);
-                       // 20.0, -0.5); // recover threadPitch
+                       math::Vector3(0, -1, 0),
+                       20, -0.5, true);
+
+      this->drcFireHose.screwJoint->SetAttribute("thread_pitch", 0,
+        this->drcFireHose.threadPitch);
+
+      // name of the joint
+      // gzerr << this->drcFireHose.screwJoint->GetScopedName() << "\n";
     }
   }
   else
   {
     // check joint position to disconnect
     double position = this->drcFireHose.screwJoint->GetAngle(0).Radian();
-    // gzerr << "position " << position << "\n";
     if (position < -0.0003)
       this->RemoveJoint(this->drcFireHose.screwJoint);
   }
@@ -823,7 +882,7 @@ void VRCPlugin::Vehicle::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
 
   if (!this->model)
   {
-    ROS_INFO("drc vehicle not found.");
+    ROS_DEBUG("drc vehicle not found.");
     return;
   }
 
@@ -875,7 +934,7 @@ void VRCPlugin::Robot::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
 
   if (!this->model)
   {
-    ROS_ERROR("atlas model not found.");
+    ROS_INFO("atlas model not found.");
     return;
   }
 
@@ -905,38 +964,41 @@ void VRCPlugin::Robot::Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
 ////////////////////////////////////////////////////////////////////////////////
 void VRCPlugin::LoadVRCROSAPI()
 {
-  // ros subscription
-  std::string robot_enter_car_topic_name = "drc_world/robot_enter_car";
-  ros::SubscribeOptions robot_enter_car_so =
-    ros::SubscribeOptions::create<geometry_msgs::Pose>(
-    robot_enter_car_topic_name, 100,
-    boost::bind(&VRCPlugin::RobotEnterCar, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->subRobotEnterCar = this->rosNode->subscribe(robot_enter_car_so);
-
-  std::string robot_exit_car_topic_name = "drc_world/robot_exit_car";
-  ros::SubscribeOptions robot_exit_car_so =
-    ros::SubscribeOptions::create<geometry_msgs::Pose>(
-    robot_exit_car_topic_name, 100,
-    boost::bind(&VRCPlugin::RobotExitCar, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->subRobotExitCar = this->rosNode->subscribe(robot_exit_car_so);
-
-  std::string robot_grab_topic_name = "drc_world/robot_grab_link";
-  ros::SubscribeOptions robot_grab_so =
-    ros::SubscribeOptions::create<geometry_msgs::Pose>(
-    robot_grab_topic_name, 100,
-    boost::bind(&VRCPlugin::RobotGrabFireHose, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->subRobotGrab = this->rosNode->subscribe(robot_grab_so);
-
-  std::string robot_release_topic_name = "drc_world/robot_release_link";
-  ros::SubscribeOptions robot_release_so =
-    ros::SubscribeOptions::create<geometry_msgs::Pose>(
-    robot_release_topic_name, 100,
-    boost::bind(&VRCPlugin::RobotReleaseLink, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->subRobotRelease = this->rosNode->subscribe(robot_release_so);
+  if (this->cheatsEnabled)
+  {
+    // ros subscription
+    std::string robot_enter_car_topic_name = "drc_world/robot_enter_car";
+    ros::SubscribeOptions robot_enter_car_so =
+      ros::SubscribeOptions::create<geometry_msgs::Pose>(
+      robot_enter_car_topic_name, 100,
+      boost::bind(&VRCPlugin::RobotEnterCar, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->subRobotEnterCar = this->rosNode->subscribe(robot_enter_car_so);
+  
+    std::string robot_exit_car_topic_name = "drc_world/robot_exit_car";
+    ros::SubscribeOptions robot_exit_car_so =
+      ros::SubscribeOptions::create<geometry_msgs::Pose>(
+      robot_exit_car_topic_name, 100,
+      boost::bind(&VRCPlugin::RobotExitCar, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->subRobotExitCar = this->rosNode->subscribe(robot_exit_car_so);
+  
+    std::string robot_grab_topic_name = "drc_world/robot_grab_link";
+    ros::SubscribeOptions robot_grab_so =
+      ros::SubscribeOptions::create<geometry_msgs::Pose>(
+      robot_grab_topic_name, 100,
+      boost::bind(&VRCPlugin::RobotGrabFireHose, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->subRobotGrab = this->rosNode->subscribe(robot_grab_so);
+  
+    std::string robot_release_topic_name = "drc_world/robot_release_link";
+    ros::SubscribeOptions robot_release_so =
+      ros::SubscribeOptions::create<geometry_msgs::Pose>(
+      robot_release_topic_name, 100,
+      boost::bind(&VRCPlugin::RobotReleaseLink, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->subRobotRelease = this->rosNode->subscribe(robot_release_so);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -945,7 +1007,7 @@ void VRCPlugin::LoadRobotROSAPI()
   if (!this->rosNode->getParam("atlas/time_to_unpin",
     atlas.startupHarnessDuration))
   {
-    ROS_INFO("atlas/time_to_unpin not specified, default harness duration to"
+    ROS_DEBUG("atlas/time_to_unpin not specified, default harness duration to"
              " %f seconds", atlas.startupHarnessDuration);
   }
 
@@ -968,40 +1030,42 @@ void VRCPlugin::LoadRobotROSAPI()
       atlas.startupMode.c_str());
   }
 
-
-  // ros subscription
-  std::string trajectory_topic_name = "atlas/cmd_vel";
-  ros::SubscribeOptions trajectory_so =
-    ros::SubscribeOptions::create<geometry_msgs::Twist>(
-    trajectory_topic_name, 100,
-    boost::bind(&VRCPlugin::SetRobotCmdVel, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->atlas.subTrajectory = this->rosNode->subscribe(trajectory_so);
-
-  std::string pose_topic_name = "atlas/set_pose";
-  ros::SubscribeOptions pose_so =
-    ros::SubscribeOptions::create<geometry_msgs::Pose>(
-    pose_topic_name, 100,
-    boost::bind(&VRCPlugin::SetRobotPose, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->atlas.subPose = this->rosNode->subscribe(pose_so);
-
-  std::string configuration_topic_name = "atlas/configuration";
-  ros::SubscribeOptions configuration_so =
-    ros::SubscribeOptions::create<sensor_msgs::JointState>(
-    configuration_topic_name, 100,
-    boost::bind(&VRCPlugin::SetRobotConfiguration, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->atlas.subConfiguration =
-    this->rosNode->subscribe(configuration_so);
-
-  std::string mode_topic_name = "atlas/mode";
-  ros::SubscribeOptions mode_so =
-    ros::SubscribeOptions::create<std_msgs::String>(
-    mode_topic_name, 100,
-    boost::bind(&VRCPlugin::SetRobotModeTopic, this, _1),
-    ros::VoidPtr(), &this->rosQueue);
-  this->atlas.subMode = this->rosNode->subscribe(mode_so);
+  if (this->cheatsEnabled)
+  {
+    // ros subscription
+    std::string trajectory_topic_name = "atlas/cmd_vel";
+    ros::SubscribeOptions trajectory_so =
+      ros::SubscribeOptions::create<geometry_msgs::Twist>(
+      trajectory_topic_name, 100,
+      boost::bind(&VRCPlugin::SetRobotCmdVel, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->atlas.subTrajectory = this->rosNode->subscribe(trajectory_so);
+  
+    std::string pose_topic_name = "atlas/set_pose";
+    ros::SubscribeOptions pose_so =
+      ros::SubscribeOptions::create<geometry_msgs::Pose>(
+      pose_topic_name, 100,
+      boost::bind(&VRCPlugin::SetRobotPose, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->atlas.subPose = this->rosNode->subscribe(pose_so);
+  
+    std::string configuration_topic_name = "atlas/configuration";
+    ros::SubscribeOptions configuration_so =
+      ros::SubscribeOptions::create<sensor_msgs::JointState>(
+      configuration_topic_name, 100,
+      boost::bind(&VRCPlugin::SetRobotConfiguration, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->atlas.subConfiguration =
+      this->rosNode->subscribe(configuration_so);
+  
+    std::string mode_topic_name = "atlas/mode";
+    ros::SubscribeOptions mode_so =
+      ros::SubscribeOptions::create<std_msgs::String>(
+      mode_topic_name, 100,
+      boost::bind(&VRCPlugin::SetRobotModeTopic, this, _1),
+      ros::VoidPtr(), &this->rosQueue);
+    this->atlas.subMode = this->rosNode->subscribe(mode_so);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

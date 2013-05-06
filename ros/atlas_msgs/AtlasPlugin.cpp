@@ -55,7 +55,6 @@ AtlasPlugin::AtlasPlugin()
   this->behaviorMap["Manipulate"] =
     atlas_msgs::AtlasSimInterfaceCommand::MANIPULATE;
 
-
   // default control synchronization delay settings
   // to trigger synchronization delay, set
   // atlas_msgs::AtlasCommand::desired_controller_period_ms to non-zero
@@ -64,6 +63,10 @@ AtlasPlugin::AtlasPlugin()
   this->delayMaxPerStep = common::Time(0.025);
   this->delayWindowStart = common::Time(0.0);
   this->delayInWindow = common::Time(0.0);
+
+  // kp_velocity bounds Nms/rad
+  this->kp_velocityMax = 10.0;
+  this->kp_velocityMin = 0.1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2259,8 +2262,29 @@ void AtlasPlugin::UpdatePIDControl(double _dt)
 
     this->errorTerms[i].q_p = q_p;
 
+    // apply kp_velocity as cfm damping
+    // (infinite bandwidth derivative term) with hardcoded bound
+    // whatever is within range of allowable joint damping is
+    // passed to joint viscous damping internally, and left over
+    // values are applied normally.
+    double kp_velocityCFM = math::clamp(
+      static_cast<double>(this->atlasState.kp_velocity[i]) +
+      this->kp_velocityMin,  // add kp_velocityMin so minimum joint damping
+                             // is always applied.
+      this->kp_velocityMin, this->kp_velocityMax);
+
     this->errorTerms[i].qd_p =
       this->atlasCommand.velocity[i] - this->atlasState.velocity[i];
+    // limit 
+    double kp_velocityPID =
+      this->atlasState.kp_velocity[i] -
+      (kp_velocityCFM - this->kp_velocityMin);  // subtract kp_velocityMin
+                                                // becasue it was added
+                                                // to kp_velocityCFM
+    double force_kp_velocity =
+      this->atlasState.kp_velocity[i] * this->atlasCommand.velocity[i] -
+      kp_velocityPID * this->atlasState.velocity[i];
+    this->joints[i]->SetDamping(0, kp_velocityCFM);
 
     this->errorTerms[i].k_i_q_i = math::clamp(
       this->errorTerms[i].k_i_q_i +
@@ -2280,7 +2304,7 @@ void AtlasPlugin::UpdatePIDControl(double _dt)
       this->atlasState.kp_position[i] * this->errorTerms[i].q_p +
                                         this->errorTerms[i].k_i_q_i +
       this->atlasState.kd_position[i] * this->errorTerms[i].d_q_p_dt +
-      this->atlasState.kp_velocity[i] * this->errorTerms[i].qd_p +
+                                         force_kp_velocity +
                                         this->atlasCommand.effort[i]) +
       (1.0 - k_effort)                * this->controlOutput.f_out[i];
 

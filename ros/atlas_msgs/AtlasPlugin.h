@@ -480,6 +480,12 @@ namespace gazebo
     /// \brief joint damping coefficient bounds
     private: std::vector<double> jointDampingMax;
     private: std::vector<double> jointDampingMin;
+
+    /// \brief kp_velocity as cfm damping upper bound
+    private: double kp_velocityMax;
+
+    /// \brief kp_velocity as cfm damping lower bound
+    private: double kp_velocityMin;
   };
 }
 #endif

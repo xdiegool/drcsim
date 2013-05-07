@@ -810,18 +810,21 @@ void AtlasPlugin::DeferredLoad()
   this->pubDelayStatisticsQueue =
     this->pmq.addPub<atlas_msgs::SynchronizationStatistics>();
 
-  // read delay settings in param server and apply limits if
-  // atlas_msgs::AtlasCommand::desired_controller_period_ms is not zero
-  /// \TODO: if cheats enabled, don't load these parameters.
-  double delayValue;
-  if (this->rosNode->getParam("atlas/delay_window_size", delayValue))
-    this->delayWindowSize = delayValue;
-  if (this->rosNode->getParam("atlas/delay_max_per_window", delayValue))
-    this->delayMaxPerWindow = delayValue;
-  if (this->rosNode->getParam("atlas/delay_max_per_step", delayValue))
-    this->delayMaxPerStep = delayValue;
+  // Read delay settings in param server and apply limits if
+  // atlas_msgs::AtlasCommand::desired_controller_period_ms is not zero.
+  // Only load params if cheats are enabled; otherwise stick with the
+  // defaults, which are set in AtlasPlugin::AtlasPlugin().
+  if (this->cheatsEnabled)
+  {
+    double delayValue;
+    if (this->rosNode->getParam("atlas/delay_window_size", delayValue))
+      this->delayWindowSize = delayValue;
+    if (this->rosNode->getParam("atlas/delay_max_per_window", delayValue))
+      this->delayMaxPerWindow = delayValue;
+    if (this->rosNode->getParam("atlas/delay_max_per_step", delayValue))
+      this->delayMaxPerStep = delayValue;
+  }
   
-
   // publish separate /atlas/imu topic, to be deprecated
   this->pubImu =
     this->rosNode->advertise<sensor_msgs::Imu>("atlas/imu", 10);
@@ -1889,7 +1892,7 @@ void AtlasPlugin::AtlasControlOutputToAtlasSimInterfaceState(
     _fbOut->behavior_feedback.trans_to_behavior_index;
   _fb->stand_feedback.status_flags = _fbOut->stand_feedback.status_flags;
   _fb->step_feedback.status_flags = _fbOut->step_feedback.status_flags;
-  _fb->walk_feedback.t_step_rem = _fb->walk_feedback.t_step_rem;
+  _fb->walk_feedback.t_step_rem = _fbOut->walk_feedback.t_step_rem;
   _fb->walk_feedback.current_step_index =
     _fbOut->walk_feedback.current_step_index;
   _fb->walk_feedback.next_step_index_needed =

@@ -63,6 +63,18 @@ DRCVehiclePlugin::DRCVehiclePlugin()
   this->maxSpeed = 0;
   this->aeroLoad = 0;
   this->minBrakePercent = 0;
+
+  this->handWheelState = 0;
+  this->handBrakeState = 0;
+  this->fnrSwitchState = 0;
+  this->brakePedalState = 0;
+  this->gasPedalState = 0;
+  this->flSteeringState = 0;
+  this->frSteeringState = 0;
+  this->flWheelState = 0;
+  this->frWheelState = 0;
+  this->blWheelState = 0;
+  this->brWheelState = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -422,6 +434,8 @@ void DRCVehiclePlugin::Load(physics::ModelPtr _parent,
   this->world = _parent->GetWorld();
   this->model = _parent;
 
+  std::string paramKey;
+
   // Get joints
   std::string gasPedalJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("gas_pedal");
@@ -447,11 +461,18 @@ void DRCVehiclePlugin::Load(physics::ModelPtr _parent,
   if (!this->handBrakeJoint)
     gzthrow("could not find hand brake joint\n");
 
-  std::string fnrSwitchJointName = this->model->GetName() + "::"
-    + _sdf->GetValueString("fnr_switch");
-  this->fnrSwitchJoint = this->model->GetJoint(fnrSwitchJointName);
-  if (!this->fnrSwitchJoint)
-    gzthrow("could not find FNR switch joint\n");
+  paramKey = "fnr_switch";
+  if (_sdf->HasElement(paramKey))
+  {
+    std::string jointName = this->model->GetName() + "::"
+      + _sdf->GetValueString(paramKey);
+    this->fnrSwitchJoint = this->model->GetJoint(jointName);
+    if (!this->fnrSwitchJoint)
+    {
+      gzwarn << "could not find " << paramKey
+             << " joint, please check your model\n";
+    }
+  }
 
   std::string flWheelJointName = this->model->GetName() + "::"
     + _sdf->GetValueString("front_left_wheel");
@@ -532,8 +553,11 @@ void DRCVehiclePlugin::Load(physics::ModelPtr _parent,
   this->handBrakeRange   = this->handBrakeHigh - this->handBrakeLow;
   this->handBrakeCmd = this->handBrakeHigh;
 
-  this->fnrSwitchHigh  = this->fnrSwitchJoint->GetHighStop(0).Radian();
-  this->fnrSwitchLow   = this->fnrSwitchJoint->GetLowStop(0).Radian();
+  if (this->fnrSwitchJoint)
+  {
+    this->fnrSwitchHigh  = this->fnrSwitchJoint->GetHighStop(0).Radian();
+    this->fnrSwitchLow   = this->fnrSwitchJoint->GetLowStop(0).Radian();
+  }
 
   jointCenter = (this->fnrSwitchHigh + this->fnrSwitchLow) / 2.0;
   this->fnrSwitchHigh = jointCenter +
@@ -544,55 +568,54 @@ void DRCVehiclePlugin::Load(physics::ModelPtr _parent,
   this->UpdateFNRSwitchTime();
 
   // get some vehicle parameters
-  std::string paramName;
   double paramDefault;
 
-  paramName = "front_torque";
+  paramKey = "front_torque";
   paramDefault = 0;
-  if (_sdf->HasElement(paramName))
-    this->frontTorque = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->frontTorque = _sdf->GetValueDouble(paramKey);
   else
     this->frontTorque = paramDefault;
 
-  paramName = "back_torque";
+  paramKey = "back_torque";
   paramDefault = 2000;
-  if (_sdf->HasElement(paramName))
-    this->backTorque = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->backTorque = _sdf->GetValueDouble(paramKey);
   else
     this->backTorque = paramDefault;
 
-  paramName = "front_brake_torque";
+  paramKey = "front_brake_torque";
   paramDefault = 2000;
-  if (_sdf->HasElement(paramName))
-    this->frontBrakeTorque = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->frontBrakeTorque = _sdf->GetValueDouble(paramKey);
   else
     this->frontBrakeTorque = paramDefault;
 
-  paramName = "back_brake_torque";
+  paramKey = "back_brake_torque";
   paramDefault = 2000;
-  if (_sdf->HasElement(paramName))
-    this->backBrakeTorque = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->backBrakeTorque = _sdf->GetValueDouble(paramKey);
   else
     this->backBrakeTorque = paramDefault;
 
-  paramName = "max_speed";
+  paramKey = "max_speed";
   paramDefault = 10;
-  if (_sdf->HasElement(paramName))
-    this->maxSpeed = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->maxSpeed = _sdf->GetValueDouble(paramKey);
   else
     this->maxSpeed = paramDefault;
 
-  paramName = "aero_load";
+  paramKey = "aero_load";
   paramDefault = 0.1;
-  if (_sdf->HasElement(paramName))
-    this->aeroLoad = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->aeroLoad = _sdf->GetValueDouble(paramKey);
   else
     this->aeroLoad = paramDefault;
 
-  paramName = "min_brake_percent";
+  paramKey = "min_brake_percent";
   paramDefault = 0.02;
-  if (_sdf->HasElement(paramName))
-    this->minBrakePercent = _sdf->GetValueDouble(paramName);
+  if (_sdf->HasElement(paramKey))
+    this->minBrakePercent = _sdf->GetValueDouble(paramKey);
   else
     this->minBrakePercent = paramDefault;
 
@@ -694,7 +717,8 @@ void DRCVehiclePlugin::UpdateStates()
 {
   this->handWheelState = this->handWheelJoint->GetAngle(0).Radian();
   this->handBrakeState = this->handBrakeJoint->GetAngle(0).Radian();
-  this->fnrSwitchState = this->fnrSwitchJoint->GetAngle(0).Radian();
+  if (this->fnrSwitchJoint)
+    this->fnrSwitchState = this->fnrSwitchJoint->GetAngle(0).Radian();
   this->brakePedalState = this->brakePedalJoint->GetAngle(0).Radian();
   this->gasPedalState = this->gasPedalJoint->GetAngle(0).Radian();
   this->flSteeringState = this->flWheelSteeringJoint->GetAngle(0).Radian();
@@ -763,7 +787,8 @@ void DRCVehiclePlugin::UpdateStates()
     // PID (position) FNR switch
     double fnrSwitchError = this->fnrSwitchState - this->fnrSwitchCmd;
     double fnrSwitchPIDCmd = this->fnrSwitchPID.Update(fnrSwitchError, dt);
-    this->fnrSwitchJoint->SetForce(0, fnrSwitchPIDCmd);
+    if (this->fnrSwitchJoint)
+      this->fnrSwitchJoint->SetForce(0, fnrSwitchPIDCmd);
 
     // PID (position) gas pedal
     double gasError = this->gasPedalState - this->gasPedalCmd;

@@ -133,6 +133,14 @@ namespace gazebo
     private: bool SetJointDamping(atlas_msgs::SetJointDamping::Request &_req,
       atlas_msgs::SetJointDamping::Response &_res);
 
+    /// \brief keep track of number of times damping coefficients has been
+    /// updated.
+    private: int setJointDampingCount;
+
+    /// \brief hard coded number of times one is allowed to change joint damping
+    /// currently, it's set to 3.
+    private: int setJointDampingLimit;
+
     /// \brief ros service callback to get joint damping
     /// \param[in] _req Incoming ros service request
     /// \param[in] _res Outgoing ros service response
@@ -517,6 +525,46 @@ namespace gazebo
       result.y = _vec3.n[1];
       result.z = _vec3.n[2];
       return result;
+    }
+
+    /// \brief Construct a quaternion from surface normal and yaw step date.
+    /// \param[in] _normal AtlasVec3f for surface noraml in Atlas odom frame.
+    /// \param[in] _yaw foot yaw angle in Atlas odom frame.
+    /// \return a quaternion describing pose of foot.
+    private: inline geometry_msgs::Quaternion OrientationFromNormalAndYaw(
+      const AtlasVec3f &_normal, double _yaw)
+    {
+      // compute rotation about x, y and z axis from normal and yaw
+      // given normal = (nx, ny, nz)
+
+      // rotation about x is pi/2 - asin(nz / sqrt(ny^2 + nz^2))
+      double rx = 0;
+      {
+        double yz = sqrt(_normal.n[1]*_normal.n[1] +
+                         _normal.n[2]*_normal.n[2]);
+        if (math::equal(yz, 0.0))
+          ROS_WARN("AtlasSimInterface: surface normal for foot placement has "
+                   "zero length or is parallel to the x-axis");
+        else
+          rx = 0.5*M_PI - asin(_normal.n[2] / yz);
+      }
+
+      // rotation about y is pi/2 - asin(nz / sqrt(nx^2 + nz^2))
+      double ry = 0;
+      {
+        double xz = sqrt(_normal.n[0]*_normal.n[0] +
+                         _normal.n[2]*_normal.n[2]);
+        if (math::equal(xz, 0.0))
+          ROS_WARN("AtlasSimInterface: surface normal for foot placement has "
+                   "zero length or is parallel to the y-axis");
+        else
+          ry = 0.5*M_PI - asin(_normal.n[2] / xz);
+      }
+
+      // rotation about z is yaw
+      double rz = _yaw;
+
+      return this->ToQ(math::Quaternion(rx, ry, rz));
     }
 
     // controls message age measure

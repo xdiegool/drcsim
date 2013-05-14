@@ -78,6 +78,7 @@
 // high speed control
 #include <atlas_msgs/AtlasState.h>
 #include <atlas_msgs/AtlasCommand.h>
+#include <atlas_msgs/AtlasCommandFullState.h>
 
 // low speed control
 #include <atlas_msgs/AtlasSimInterfaceCommand.h>
@@ -216,12 +217,15 @@ namespace gazebo
     private: PubQueue<atlas_msgs::AtlasState>::Ptr pubAtlasStateQueue;
 
     private: ros::Subscriber subAtlasCommand;
+    private: ros::Subscriber subAtlasCommandFullState;
     private: ros::Subscriber subJointCommands;
 
     /// \brief ros topic callback to update Atlas Commands
     /// \param[in] _msg Incoming ros message
     private: void SetAtlasCommand(
       const atlas_msgs::AtlasCommand::ConstPtr &_msg);
+    private: void SetAtlasCommandFullState(
+      const atlas_msgs::AtlasCommandFullState::ConstPtr &_msg);
 
     /// \brief ros topic callback to update Joint Commands slowly.
     /// Control conmmands received through /atlas/joint_commands are
@@ -340,6 +344,7 @@ namespace gazebo
     private: atlas_msgs::AtlasCommand atlasCommand;
     private: osrf_msgs::JointCommands jointCommands;
     private: sensor_msgs::JointState jointStates;
+    private: atlas_msgs::AtlasCommandFullState atlasCommandFullState;
 
     // JointController: pointer to a copy of the joint controller in gazebo
     // \TODO: not yet functional

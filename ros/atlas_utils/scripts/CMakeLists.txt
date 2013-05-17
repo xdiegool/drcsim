@@ -1,4 +1,5 @@
-set (files
+set (files 
+  atlas_commander.py
   gdbrun
   check_inertia_symmetry.bash
   run_gazebo
@@ -13,6 +14,7 @@ set (files
   test.py
   performance_test1.py
   keyboard_teleop.py
+  orientation_checker.py
 )
 install(PROGRAMS ${files} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/${PROJECT_NAME}-${DRC_SIM_VERSION}/ros/${ROS_PACKAGE_NAME}/scripts/)
 

@@ -95,7 +95,7 @@
 
 // #include <tf/transform_broadcaster.h>
 
-#include "Server.hh"
+#include "gazebo/Server.hh"
 #include "gazebo/physics/Physics.hh"
 #include "gazebo/physics/PhysicsEngine.hh"
 #include "gazebo/physics/PhysicsTypes.hh"

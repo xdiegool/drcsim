@@ -20,15 +20,15 @@
 
 #include <gazebo_plugins/gazebo_ros_block_laser.h>
 
-#include "physics/World.hh"
-#include "physics/HingeJoint.hh"
-#include "sensors/Sensor.hh"
-#include "sdf/interface/SDF.hh"
-#include "sdf/interface/Param.hh"
-#include "common/Exception.hh"
-#include "sensors/RaySensor.hh"
-#include "sensors/SensorTypes.hh"
-#include "transport/Node.hh"
+#include "gazebo/physics/World.hh"
+#include "gazebo/physics/HingeJoint.hh"
+#include "gazebo/sensors/Sensor.hh"
+#include "gazebo/sdf/interface/SDF.hh"
+#include "gazebo/sdf/interface/Param.hh"
+#include "gazebo/common/Exception.hh"
+#include "gazebo/sensors/RaySensor.hh"
+#include "gazebo/sensors/SensorTypes.hh"
+#include "gazebo/transport/Node.hh"
 
 #include <geometry_msgs/Point32.h>
 #include <sensor_msgs/ChannelFloat32.h>

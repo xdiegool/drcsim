@@ -6,7 +6,7 @@ material vrc/firehose_canvas
 		pass
 		{
 			ambient 0.7 0.7 0.7 1.0
-			diffuse 1.0 1.0 1.0 1.0
+			diffuse 1.0 1.0 1.0 1.0			
 			specular 0.0 0.0 0.0 0.0
 
 			texture_unit
@@ -14,6 +14,45 @@ material vrc/firehose_canvas
 				texture canvas.jpg
 				filtering trilinear
         scale 1.00 1.00
+			}
+		}
+	}
+}
+
+material vrc/firehose_coupling
+{
+	technique
+	{
+		pass
+		{
+			ambient 0.7 0.7 0.7 1.0
+			diffuse 1.0 1.0 1.0 1.0
+			specular 0.0 0.0 0.0 0.0
+      emissive 0.2 0.2 0.2
+
+			texture_unit
+			{
+				texture coupling_hexagon.png
+				filtering trilinear
+			}
+		}
+	}
+}
+
+material vrc/firehose_red_coupling
+{
+	technique
+	{
+		pass
+		{
+			ambient 0.7 0.7 0.7 1.0
+			diffuse 1.0 1.0 1.0 1.0
+			specular 0.0 0.0 0.0 0.0
+
+			texture_unit
+			{
+				texture vrc_connector.png
+				filtering trilinear
 			}
 		}
 	}

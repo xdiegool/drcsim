@@ -42,7 +42,10 @@ MultiSenseSL::MultiSenseSL()
   // fixed joint reduction.  Offset of the imu_link is lumped into
   // the <pose> tag in the imu_sensor block.
   this->imuLinkName = "head";
-  this->imagerMode = 2;
+
+  // change default imager mode to 1 (1Hz ~ 30Hz)
+  // in simulation, we are using 800X800 pixels @30Hz
+  this->imagerMode = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,7 +66,7 @@ void MultiSenseSL::Load(physics::ModelPtr _parent, sdf::ElementPtr _sdf)
   this->world = _parent->GetWorld();
   this->sdf = _sdf;
 
-  ROS_INFO("Loading MultiSense ROS node.");
+  ROS_DEBUG("Loading MultiSense ROS node.");
 
   this->lastTime = this->world->GetSimTime();
 
@@ -117,10 +120,8 @@ void MultiSenseSL::Load(physics::ModelPtr _parent, sdf::ElementPtr _sdf)
   // get default frame rate
   this->multiCameraFrameRate = this->multiCameraSensor->GetUpdateRate();
 
-  this->laserSensor =
-    boost::shared_dynamic_cast<sensors::RaySensor>(
-    sensors::SensorManager::Instance()->GetSensor("head_hokuyo_sensor"));
-  if (!this->laserSensor)
+
+  if (!sensors::SensorManager::Instance()->GetSensor("head_hokuyo_sensor"))
     gzerr << "laser sensor not found\n";
 
   if (!ros::isInitialized())

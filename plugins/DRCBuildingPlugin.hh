@@ -20,6 +20,7 @@
 #include <string>
 
 #include <boost/thread.hpp>
+#include <boost/thread/mutex.hpp>
 
 #include <gazebo/physics/physics.hh>
 #include <gazebo/transport/TransportTypes.hh>

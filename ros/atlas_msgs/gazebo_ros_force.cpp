@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <stdlib.h>
 
 #include "gazebo_ros_force.h"
 
@@ -66,6 +67,17 @@ GazeboRosForce::~GazeboRosForce()
 // Load the controller
 void GazeboRosForce::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
 {
+  // By default, cheats are off.  Allow override via environment variable.
+  bool cheatsEnabled;
+  char* cheatsEnabledString = getenv("VRC_CHEATS_ENABLED");
+  if (cheatsEnabledString && (std::string(cheatsEnabledString) == "1"))
+    cheatsEnabled = true;
+  else
+    cheatsEnabled = false;
+
+  if (!cheatsEnabled)
+    return;
+
   // Get the world name.
   this->world = _model->GetWorld();
   
@@ -120,7 +132,7 @@ void GazeboRosForce::Load(physics::ModelPtr _model, sdf::ElementPtr _sdf)
   // New Mechanism for Updating every World Cycle
   // Listen to the update event. This event is broadcast every
   // simulation iteration.
-  this->updateConnection = event::Events::ConnectWorldUpdateStart(
+  this->updateConnection = event::Events::ConnectWorldUpdateBegin(
       boost::bind(&GazeboRosForce::UpdateChild, this));
 }
 
@@ -143,8 +155,8 @@ void GazeboRosForce::UpdateChild()
   this->lock.lock();
   math::Vector3 force(this->wrenchMsg.force.x,this->wrenchMsg.force.y,this->wrenchMsg.force.z);
   math::Vector3 torque(this->wrenchMsg.torque.x,this->wrenchMsg.torque.y,this->wrenchMsg.torque.z);
-  this->link->SetForce(force);
-  this->link->SetTorque(torque);
+  this->link->AddForce(force);
+  this->link->AddTorque(torque);
   this->lock.unlock();
 }
 

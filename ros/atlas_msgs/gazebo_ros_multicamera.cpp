@@ -54,24 +54,25 @@ void GazeboRosMultiCamera::Load(sensors::SensorPtr _parent,
     util->depth_   = this->depth[i];
     util->format_  = this->format[i];
     util->camera_  = this->camera[i];
-    util->Load(_parent, _sdf);
+    // Set up a shared connection counter
+    this->imageConnectCount = 0;
+    util->image_connect_count_ = boost::shared_ptr<int>(&this->imageConnectCount);
+    util->image_connect_count_lock_ =
+      boost::shared_ptr<boost::mutex>(&this->imageConnectCountLock);
+    this->wasActive = false;
+    util->was_active_ =
+      boost::shared_ptr<bool>(&this->wasActive);
     if (this->camera[i]->GetName().find("left") != std::string::npos)
     {
-      util->camera_name_ = util->camera_name_ + "/left";
-      // if (_sdf->HasElement("leftFrameName"))
-      //   util->frame_name_ = _sdf->Get<std::string>("leftFrameName");
       // FIXME: hardcoded, left hack_baseline_ 0
-      util->hack_baseline_ = 0.0;
+      util->Load(_parent, _sdf, "/left", 0.0);
     }
     else if (this->camera[i]->GetName().find("right") != std::string::npos)
     {
-      util->camera_name_ = util->camera_name_ + "/right";
-      // if (_sdf->HasElement("rightFrameName"))
-      //   util->frame_name_ = _sdf->Get<std::string>("rightFrameName");
-
-      // FIXME: hardcoded, right hack_baseline_ from sdf
+      double hackBaseline = 0.0;
       if (_sdf->HasElement("hackBaseline"))
-        util->hack_baseline_ = _sdf->Get<double>("hackBaseline");
+        hackBaseline = _sdf->Get<double>("hackBaseline");
+      util->Load(_parent, _sdf, "/right", hackBaseline);
     }
     this->utils.push_back(util);
   }

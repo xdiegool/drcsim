@@ -2,8 +2,8 @@
   <rosparam file="$(find sandia_hand_description)/config/sandia_hand_gazebo_gains.yaml" ns="sandia_hands"/>
 
   <!-- launch some simple grasp controllers just for a strawman -->
-  <node pkg="sandia_hand_teleop" type="simple_grasp.py" name="simple_grasp_left"  ns="sandia_hands/l_hand"/>
-  <node pkg="sandia_hand_teleop" type="simple_grasp.py" name="simple_grasp_right" ns="sandia_hands/r_hand"/>
+  <node pkg="sandia_hand_teleop" type="simple_grasp.py" name="simple_grasp_left"  ns="sandia_hands/l_hand" args="left"/>
+  <node pkg="sandia_hand_teleop" type="simple_grasp.py" name="simple_grasp_right" ns="sandia_hands/r_hand" args="right"/>
 
   <!-- additional nodes to publish joint states for the hands -->
   <node pkg="robot_state_publisher" type="state_publisher" name="sandia_hands_l_hand_robot_state_publisher">

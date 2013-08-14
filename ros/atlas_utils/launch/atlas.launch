@@ -2,14 +2,16 @@
 
   <arg name="gzname" default="gazebo"/>
   <arg name="gzworld" default="atlas.world"/>
+  <arg name="atlas_startup_mode" default="bdi_stand"/>
 
   <param name="/atlas/time_to_unpin" type="double" value="1.0"/>
+  <param name="/atlas/startup_mode" type="string" value="$(arg atlas_startup_mode)"/>
 
   <!-- start gazebo with the Atlas -->
   <include file="$(find atlas_utils)/launch/atlas_no_controllers.launch">
     <arg name="gzname" value="$(arg gzname)"/>
     <arg name="gzworld" value="$(arg gzworld)"/>
-    <arg name="extra_gazebo_args" value="-q"/>
+    <arg name="extra_gazebo_args" value="$(arg extra_gazebo_args) -q"/>
   </include>
 
   <!-- to trigger synchronization delay, set

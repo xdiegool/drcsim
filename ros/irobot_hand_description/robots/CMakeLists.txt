@@ -20,10 +20,6 @@ foreach(model_basename ${model_basenames})
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${model_basename}.model.config
           DESTINATION ${GAZEBO_INSTALL_PATH}/${model_basename}
           RENAME model.config)
-  # backwards compatibility
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${model_basename}.model.config
-          DESTINATION ${GAZEBO_INSTALL_PATH}/${model_basename}
-          RENAME manifest.xml)
 endforeach()
 
 #set (files

@@ -33,11 +33,5 @@ foreach(model_basename ${model_basenames})
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${model_basename}.model.config
           DESTINATION ${GAZEBO_INSTALL_PATH}/${model_basename}
           RENAME model.config)
-  # In gazebo-1.4, the model manifests were renamed from manifest.xml to model.config
-  # For backwards compatibility, we will continue to install a duplicate manifest.xml
-  # alongside the model.config
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${model_basename}.model.config
-          DESTINATION ${GAZEBO_INSTALL_PATH}/${model_basename}
-          RENAME manifest.xml)
 endforeach()
 

@@ -34,6 +34,7 @@
 #include <atlas_msgs/AtlasCommand.h>
 #include <atlas_msgs/AtlasSimInterfaceCommand.h>
 #include <atlas_msgs/AtlasSimInterfaceState.h>
+#include <atlas_msgs/SimulationState.h>
 
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -265,8 +266,15 @@ namespace gazebo
       /// \brief Robot configuration when inside of vehicle.
       private: std::map<std::string, double> inVehicleConfiguration;
 
-      /// \brief Duration in StandPrep before going into Stand
+      /// \brief  At t-t0 < startupStandPrepDuration seconds, pinned.
+      /// At t - t0 = startupStandPrepDurationl, start StandPrep mode.
       private: double startupStandPrepDuration;
+
+      /// \brief at t - t0 = startupNominal, start Nominal mode.
+      private: double startupNominal;
+
+      /// \brief at t - t0 = startupStand, start Stand mode.
+      private: double startupStand;
 
       /// \brief Flag to keep track of start-up 'bdi_stand' on the robot.
       private: enum BDIStandSequence {
@@ -502,6 +510,12 @@ namespace gazebo
     // items below are used for deferred load in case ros is blocking
     private: sdf::ElementPtr sdf;
     private: boost::thread deferredLoadThread;
+
+    private: std::vector<double> rtfs;
+    private: std::vector<double>::iterator rtfsIter;
+    private: double lastSimTime;
+    private: double lastRealTime;
+    private: ros::Publisher pubSimulationState;
 
     /// \brief Are cheats enabled?
     private: bool cheatsEnabled;

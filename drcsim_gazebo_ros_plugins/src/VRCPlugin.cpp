@@ -111,6 +111,15 @@ void VRCPlugin::DeferredLoad()
   // simulation iteration.
   this->updateConnection = event::Events::ConnectWorldUpdateBegin(
      boost::bind(&VRCPlugin::UpdateStates, this));
+
+  // publish simulation state stuff for analysis
+  this->rtfs.resize(20);
+  this->rtfsIter = this->rtfs.begin();
+  this->lastSimTime = this->world->GetSimTime().Double();
+  this->lastRealTime = this->world->GetRealTime().Double();
+  this->pubSimulationState =
+    this->rosNode->advertise<atlas_msgs::SimulationState>(
+    "/simulation_state", 1000, true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,7 +144,7 @@ void VRCPlugin::PinAtlas(bool _with_gravity)
   {
     links[i]->SetGravityMode(_with_gravity);
   }
-  this->SetFeetCollide("none");
+  //this->SetFeetCollide("none");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,6 +162,18 @@ void VRCPlugin::UnpinAtlas()
   if (this->vehicleRobotJoint)
     this->RemoveJoint(this->vehicleRobotJoint);
   this->SetFeetCollide("all");
+
+  if (this->world->GetPhysicsEngine()->GetType() == "simbody" ||
+      this->world->GetPhysicsEngine()->GetType() == "dart")
+  {
+    // simulate un-freezing simbody or dart unlock free joints
+    // Currently we do this to all the links in the model,
+    // but ideally we can do this to only the link(s) with
+    // a free 6-dof mobilizer.
+    physics::Link_V links = this->atlas.model->GetLinks();
+    for(physics::Link_V::iterator li = links.begin(); li != links.end(); ++li)
+      (*li)->SetLinkStatic(false);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -236,46 +257,50 @@ void VRCPlugin::SetRobotMode(const std::string &_str)
 
     physics::EntityPtr objectBelow =
       this->world->GetEntityBelowPoint(rayStart.pos);
+    double groundHeight;
     if (objectBelow)
     {
       math::Box groundBB = objectBelow->GetBoundingBox();
-      double groundHeight = groundBB.max.z;
-
-      // gzdbg << objectBelow->GetName() << "\n";
-      // gzdbg << objectBelow->GetParentModel()->GetName() << "\n";
-      // gzdbg << groundHeight << "\n";
-      // gzdbg << groundBB.max.z << "\n";
-      // gzdbg << groundBB.min.z << "\n";
-
-      // slightly above ground and upright
-      atlasPose.pos.z = groundHeight + 1.15;
-      atlasPose.rot.SetFromEuler(0, 0, 0);
-      this->atlas.model->SetLinkWorldPose(atlasPose, this->atlas.pinLink);
-
-      this->atlas.pinJoint = this->AddJoint(this->world,
-                                        this->atlas.model,
-                                        physics::LinkPtr(),
-                                        this->atlas.pinLink,
-                                        "revolute",
-                                        math::Vector3(0, 0, 0),
-                                        math::Vector3(0, 0, 1),
-                                        0.0, 0.0);
-      this->atlas.initialPose = this->atlas.pinLink->GetWorldPose();
-
-      // turning off effect of gravity
-      physics::Link_V links = this->atlas.model->GetLinks();
-      for (unsigned int i = 0; i < links.size(); ++i)
-      {
-        links[i]->SetGravityMode(false);
-      }
+      groundHeight = groundBB.max.z;
     }
     else
     {
-      gzwarn << "No entity below robot, or GetEntityBelowPoint "
-             << "returned NULL pointer.\n";
-      // put atlas back
-      this->atlas.model->SetLinkWorldPose(atlasPose, this->atlas.pinLink);
+      ROS_ERROR("failed to find ground height, guessing 0.0");
+      groundHeight = 0.0;
     }
+
+    if (this->world->GetPhysicsEngine()->GetType() == "bullet")
+    {
+      ROS_ERROR("Bullet GetEntityBelowPoint broken, see issue #539.");
+      groundHeight = 0.0;
+    }
+
+    // gzdbg << objectBelow->GetName() << "\n";
+    // gzdbg << objectBelow->GetParentModel()->GetName() << "\n";
+    // gzdbg << groundHeight << "\n";
+    // gzdbg << groundBB.max.z << "\n";
+    // gzdbg << groundBB.min.z << "\n";
+
+    // slightly above ground and upright
+    atlasPose.pos.z = groundHeight + 1.15;
+    atlasPose.rot.SetFromEuler(0, 0, 0);
+    this->atlas.model->SetLinkWorldPose(atlasPose, this->atlas.pinLink);
+
+    this->atlas.pinJoint = this->AddJoint(this->world,
+                                      this->atlas.model,
+                                      physics::LinkPtr(),
+                                      this->atlas.pinLink,
+                                      "revolute",
+                                      math::Vector3(0, 0, 0),
+                                      math::Vector3(0, 0, 1),
+                                      0.0, 0.0);
+    this->atlas.initialPose = this->atlas.pinLink->GetWorldPose();
+
+    // turning off effect of gravity
+    physics::Link_V links = this->atlas.model->GetLinks();
+    for (unsigned int i = 0; i < links.size(); ++i)
+      links[i]->SetGravityMode(false);
+
     this->world->SetPaused(paused);
   }
   else if (_str == "pinned")
@@ -358,7 +383,7 @@ void VRCPlugin::StepDataToTwist(
   }
   math::Pose current_foot_pose = foot_link->GetWorldPose();
   math::Pose T_foot_pelvis = current_pelvis_pose - current_foot_pose;
-  ROS_DEBUG("Current foot pose: %f %f %f", 
+  ROS_DEBUG("Current foot pose: %f %f %f",
     current_foot_pose.pos.x,
     current_foot_pose.pos.y,
     current_foot_pose.pos.z);
@@ -374,7 +399,7 @@ void VRCPlugin::StepDataToTwist(
   goal_foot_pose.rot.y = tmp_pose.orientation.y;
   goal_foot_pose.rot.z = tmp_pose.orientation.z;
 
-  ROS_DEBUG("Goal foot pose: %f %f %f", 
+  ROS_DEBUG("Goal foot pose: %f %f %f",
     goal_foot_pose.pos.x,
     goal_foot_pose.pos.y,
     goal_foot_pose.pos.z);
@@ -390,7 +415,7 @@ void VRCPlugin::StepDataToTwist(
     current_pelvis_pose.rot.GetAsEuler().z,
     goal_pelvis_pose.rot.GetAsEuler().z);
 
-  // Transform into ego-centric frame, which is how the resulting velocities 
+  // Transform into ego-centric frame, which is how the resulting velocities
   // will be interpreted.
   math::Vector3 local_d(dx, dy, 0);
   local_d = current_pelvis_pose.rot.RotateVectorReverse(local_d);
@@ -411,7 +436,7 @@ void VRCPlugin::StepDataToTwist(
     goal_pelvis_pose.pos.x,
     goal_pelvis_pose.pos.y,
     goal_pelvis_pose.rot.GetAsEuler().z);
-  ROS_DEBUG("Computed velocity (dt=%f): %f %f %f", 
+  ROS_DEBUG("Computed velocity (dt=%f): %f %f %f",
     _dt, _twist->linear.x, _twist->linear.y, _twist->angular.z);
 }
 
@@ -635,35 +660,49 @@ physics::JointPtr VRCPlugin::AddJoint(physics::WorldPtr _world,
                                       double _upper, double _lower,
                                       bool _disableCollision)
 {
-  physics::JointPtr joint = _world->GetPhysicsEngine()->CreateJoint(
-    _type, _model);
-  joint->Attach(_link1, _link2);
-  // load adds the joint to a vector of shared pointers kept
-  // in parent and child links, preventing joint from being destroyed.
-  joint->Load(_link1, _link2, math::Pose(_anchor, math::Quaternion()));
-  // joint->SetAnchor(0, _anchor);
-  joint->SetAxis(0, _axis);
-  joint->SetHighStop(0, _upper);
-  joint->SetLowStop(0, _lower);
-
-  if (_link1)
-    joint->SetName(_link1->GetName() + std::string("_") +
-                              _link2->GetName() + std::string("_joint"));
-  else
-    joint->SetName(std::string("world_") +
-                              _link2->GetName() + std::string("_joint"));
-  joint->Init();
-
-
-  // disable collision between the link pair
-  if (_disableCollision)
+  physics::JointPtr joint;
+  if (_world->GetPhysicsEngine()->GetType() == "ode")
   {
-    if (_link1)
-      _link1->SetCollideMode("fixed");
-    if (_link2)
-      _link2->SetCollideMode("fixed");
-  }
+    joint = _world->GetPhysicsEngine()->CreateJoint(
+      _type, _model);
+    joint->Attach(_link1, _link2);
+    // load adds the joint to a vector of shared pointers kept
+    // in parent and child links, preventing joint from being destroyed.
+    joint->Load(_link1, _link2, math::Pose(_anchor, math::Quaternion()));
+    // joint->SetAnchor(0, _anchor);
+    joint->SetAxis(0, _axis);
+    joint->SetHighStop(0, _upper);
+    joint->SetLowStop(0, _lower);
 
+    if (_link1)
+      joint->SetName(_link1->GetName() + std::string("_") +
+                                _link2->GetName() + std::string("_joint"));
+    else
+      joint->SetName(std::string("world_") +
+                                _link2->GetName() + std::string("_joint"));
+    joint->Init();
+
+
+    // disable collision between the link pair
+    if (_disableCollision)
+    {
+      if (_link1)
+        _link1->SetCollideMode("fixed");
+      if (_link2)
+        _link2->SetCollideMode("fixed");
+    }
+  }
+  else if (_world->GetPhysicsEngine()->GetType() == "simbody" ||
+           _world->GetPhysicsEngine()->GetType() == "dart")
+  {
+    // simulate freezing lock simbody or dart free joints
+    // Currently we do this to all the links in the model,
+    // but ideally we can do this to only the link(s) with
+    // a free 6-dof mobilizer.
+    physics::Link_V links = _model->GetLinks();
+    for(physics::Link_V::iterator li = links.begin(); li != links.end(); ++li)
+      (*li)->SetLinkStatic(true);
+  }
 
   return joint;
 }
@@ -869,10 +908,13 @@ void VRCPlugin::Teleport(const physics::LinkPtr &_pinLink,
 void VRCPlugin::UpdateStates()
 {
   double curTime = this->world->GetSimTime().Double();
+
   // if user chooses bdi_stand mode, robot will be initialized
   // with PID stand in BDI stand pose pinned.
-  // After startupStandPrepDuration - 1 seconds, pin released.
-  // After startupStandPrepDuration seconds, start Stand mode
+  // At t-t0 < startupStandPrepDuration seconds, pinned.
+  // At t-t0 = startupStandPrepDuration seconds, begin StandPrep mode.
+  // At t-t0 = startupNominal seconds, unpinned, nominal.
+  // At t-t0 = startupStand seconds, start Stand mode.
   if (this->atlas.startupSequence == Robot::NONE)
   {
     // Load and Spawn Robot
@@ -915,7 +957,7 @@ void VRCPlugin::UpdateStates()
         {
           // ROS_INFO("BS_PID_PINNED");
           if ((curTime - this->atlas.startupBDIStandStartTime.Double()) >
-            (atlas.startupStandPrepDuration - 8.0))
+            atlas.startupStandPrepDuration)
           {
             ROS_INFO("going into stand prep");
             this->atlasCommandController.SetBDIStandPrep();
@@ -927,7 +969,7 @@ void VRCPlugin::UpdateStates()
         {
           // ROS_INFO("BS_STAND_PREP_PINNED");
           if ((curTime - this->atlas.startupBDIStandStartTime.Double()) >
-            (atlas.startupStandPrepDuration - 0.3))
+            atlas.startupNominal)
           {
             ROS_INFO("going into Nominal");
             this->SetRobotMode("nominal");
@@ -939,7 +981,7 @@ void VRCPlugin::UpdateStates()
         {
           // ROS_INFO("BS_STAND_PREP");
           if ((curTime - this->atlas.startupBDIStandStartTime.Double()) >
-              (atlas.startupStandPrepDuration - 0.2))
+              atlas.startupStand)
           {
             ROS_INFO("going into Dynamic Stand Behavior");
             this->atlasCommandController.SetBDIStand();
@@ -960,12 +1002,13 @@ void VRCPlugin::UpdateStates()
           this->SetRobotMode("pinned");
           if (math::equal(this->atlas.startupHarnessDuration, 0.0))
           {
-            ROS_DEBUG("Atlas will stay pinned.");
+            ROS_INFO("Atlas will stay pinned.");
             this->atlas.pinnedSequence = Robot::PS_INITIALIZED;
+            this->atlas.startupSequence = Robot::INITIALIZED;
           }
           else
           {
-            ROS_DEBUG("Resume to nominal mode after %f seconds.",
+            ROS_INFO("Resume to nominal mode after %f seconds.",
               this->atlas.startupHarnessDuration);
             this->atlas.pinnedSequence = Robot::PS_PINNED;
           }
@@ -988,7 +1031,128 @@ void VRCPlugin::UpdateStates()
   }
   else if (this->atlas.startupSequence == Robot::INITIALIZED)
   {
-    // done, do nothing
+    // done, do nothing, or...
+    // data collection
+    if (this->pubSimulationState.getNumSubscribers() > 0)
+    {
+      // collect simulation data and publish it
+      physics::PhysicsEnginePtr physics = this->world->GetPhysicsEngine();
+
+      // collect data for cylinder and hand grasp case
+      physics::ModelPtr cylinderModel = this->world->GetModel("beer_heavy");
+      physics::LinkPtr cylinderLink;
+      if (cylinderModel.get() != NULL)
+        cylinderLink = cylinderModel->GetLink("link");
+      physics::LinkPtr lHandLink = this->atlas.model->GetLink("l_hand");
+      physics::LinkPtr rHandLink = this->atlas.model->GetLink("r_hand");
+
+      // collect simulation data and publish it
+      physics::LinkPtr lFootLink = this->atlas.model->GetLink("l_foot");
+      physics::LinkPtr rFootLink = this->atlas.model->GetLink("r_foot");
+
+      atlas_msgs::SimulationState ss;
+
+      ss.header.stamp = ros::Time::now();
+
+      ss.sim_time = curTime;
+      ss.wall_time = this->world->GetRealTime().Double();
+
+      // compute rtf
+      *this->rtfsIter = (ss.sim_time - this->lastSimTime) /
+                       (ss.wall_time - this->lastRealTime);
+      this->rtfsIter++;
+      if (this->rtfsIter == this->rtfs.end())
+        this->rtfsIter = this->rtfs.begin();
+      ss.real_time_factor = 0;
+      for (std::vector<double>::iterator iter = this->rtfs.begin();
+                                         iter != this->rtfs.end(); ++iter)
+        ss.real_time_factor += *iter;
+      ss.real_time_factor /= static_cast<double>(this->rtfs.size());
+      this->lastSimTime = ss.sim_time;
+      this->lastRealTime = ss.wall_time;
+
+      double *e = boost::any_cast<double*>(physics->GetParam("rms_error"));
+      ss.rms_error_bilateral = e[0];
+      ss.rms_error_contact_normal = e[1];
+      ss.rms_error_friction = e[2];
+      ss.rms_error_total = e[3];
+      double *r =
+        boost::any_cast<double*>(physics->GetParam("constraint_residual"));
+      ss.jv_bilateral = r[0];
+      ss.jv_contact_normal = r[1];
+      ss.jv_friction = r[2];
+      ss.jv_total = r[3];
+      ss.num_contacts =
+        boost::any_cast<int>(physics->GetParam("num_contacts"));
+      ss.inertia_ratio_reduction =
+        boost::any_cast<bool>(physics->GetParam("inertia_ratio_reduction"));
+      ss.experimental_row_reordering =
+        boost::any_cast<bool>(physics->GetParam("experimental_row_reordering"));
+      ss.contact_residual_smoothing =
+        boost::any_cast<double>(physics->GetParam("contact_residual_smoothing"));
+      ss.warm_start_factor =
+        boost::any_cast<double>(physics->GetParam("warm_start_factor"));
+      ss.extra_friction_iterations =
+        boost::any_cast<int>(physics->GetParam("extra_friction_iterations"));
+      ss.atlas_energy = this->atlas.model->GetWorldEnergy();
+      ss.atlas_energy_potential = this->atlas.model->GetWorldEnergyPotential();
+      ss.atlas_energy_kinetic = this->atlas.model->GetWorldEnergyKinetic();
+      ss.atlas_energy_kinetic_filtered =
+        0; // this->atlas.model->GetWorldEnergyKineticFiltered();
+      ss.atlas_energy_filtered = 0; // this->atlas.model->GetWorldEnergyFiltered();
+      ss.atlas_energy_kinetic_vibrational =
+        0; // this->atlas.model->GetWorldEnergyKineticVibrational();
+      ss.l_foot_pos_x    = lFootLink->GetWorldPose().pos.x;
+      ss.l_foot_pos_y    = lFootLink->GetWorldPose().pos.y;
+      ss.l_foot_pos_z    = lFootLink->GetWorldPose().pos.z;
+      ss.l_foot_rot_x    = lFootLink->GetWorldPose().rot.GetAsEuler().x;
+      ss.l_foot_rot_y    = lFootLink->GetWorldPose().rot.GetAsEuler().y;
+      ss.l_foot_rot_z    = lFootLink->GetWorldPose().rot.GetAsEuler().z;
+      ss.l_foot_linvel_x = lFootLink->GetWorldLinearVel().x;
+      ss.l_foot_linvel_y = lFootLink->GetWorldLinearVel().y;
+      ss.l_foot_linvel_z = lFootLink->GetWorldLinearVel().z;
+      ss.l_foot_angvel_x = lFootLink->GetWorldAngularVel().x;
+      ss.l_foot_angvel_y = lFootLink->GetWorldAngularVel().y;
+      ss.l_foot_angvel_z = lFootLink->GetWorldAngularVel().z;
+      ss.r_foot_pos_x    = rFootLink->GetWorldPose().pos.x;
+      ss.r_foot_pos_y    = rFootLink->GetWorldPose().pos.y;
+      ss.r_foot_pos_z    = rFootLink->GetWorldPose().pos.z;
+      ss.r_foot_rot_x    = rFootLink->GetWorldPose().rot.GetAsEuler().x;
+      ss.r_foot_rot_y    = rFootLink->GetWorldPose().rot.GetAsEuler().y;
+      ss.r_foot_rot_z    = rFootLink->GetWorldPose().rot.GetAsEuler().z;
+      ss.r_foot_linvel_x = rFootLink->GetWorldLinearVel().x;
+      ss.r_foot_linvel_y = rFootLink->GetWorldLinearVel().y;
+      ss.r_foot_linvel_z = rFootLink->GetWorldLinearVel().z;
+      ss.r_foot_angvel_x = rFootLink->GetWorldAngularVel().x;
+      ss.r_foot_angvel_y = rFootLink->GetWorldAngularVel().y;
+      ss.r_foot_angvel_z = rFootLink->GetWorldAngularVel().z;
+
+      // publish cylinder relative to hand data
+      if (cylinderLink.get() != NULL)
+      {
+        math::Pose relPose =
+          cylinderLink->GetWorldPose() - rHandLink->GetWorldPose();
+        math::Vector3 relLinearVel =
+          cylinderLink->GetWorldLinearVel() - rHandLink->GetWorldLinearVel();
+        math::Vector3 relAngularVel =
+          cylinderLink->GetWorldAngularVel() - rHandLink->GetWorldAngularVel();
+
+        ss.cylinder_hand_pos_x    = relPose.pos.x;
+        ss.cylinder_hand_pos_y    = relPose.pos.y;
+        ss.cylinder_hand_pos_z    = relPose.pos.z;
+        ss.cylinder_hand_rot_x    = relPose.rot.GetAsEuler().x;
+        ss.cylinder_hand_rot_y    = relPose.rot.GetAsEuler().y;
+        ss.cylinder_hand_rot_z    = relPose.rot.GetAsEuler().z;
+        ss.cylinder_hand_linvel_x = relLinearVel.x;
+        ss.cylinder_hand_linvel_y = relLinearVel.y;
+        ss.cylinder_hand_linvel_z = relLinearVel.z;
+        ss.cylinder_hand_angvel_x = relAngularVel.x;
+        ss.cylinder_hand_angvel_y = relAngularVel.y;
+        ss.cylinder_hand_angvel_z = relAngularVel.z;
+      }
+
+      this->pubSimulationState.publish(ss);
+    }
   }
   else
   {
@@ -1364,6 +1528,13 @@ VRCPlugin::Robot::Robot()
   this->startupSequence = Robot::NONE;
   this->bdiStandSequence = Robot::BS_NONE;
   this->pinnedSequence = Robot::PS_NONE;
+
+  // bunch of hardcoded presets
+  this->startupHarnessDuration = 5;
+  this->startupStandPrepDuration = 2.0;
+  this->startupNominal = this->startupStandPrepDuration + 2.0;
+  this->startupStand = this->startupNominal + 0.1;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1375,10 +1546,6 @@ VRCPlugin::Robot::~Robot()
 void VRCPlugin::Robot::InsertModel(physics::WorldPtr _world,
   sdf::ElementPtr _sdf)
 {
-  // bunch of hardcoded presets
-  this->startupHarnessDuration = 10;
-  this->startupStandPrepDuration = 10;
-
   // changed by ros param
   this->spawnPose = math::Pose(0, 0, 0, 0, 0, 0);
 
@@ -1528,7 +1695,7 @@ void VRCPlugin::LoadRobotROSAPI()
   if (!this->rosNode->getParam("atlas/time_to_unpin",
     atlas.startupHarnessDuration))
   {
-    ROS_DEBUG("atlas/time_to_unpin not specified, default harness duration to"
+    ROS_INFO("atlas/time_to_unpin not specified, default harness duration to"
              " %f seconds", atlas.startupHarnessDuration);
   }
 

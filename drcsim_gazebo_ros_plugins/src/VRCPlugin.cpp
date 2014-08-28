@@ -268,11 +268,6 @@ void VRCPlugin::SetRobotMode(const std::string &_str)
     }
     if (entityBelow && fromEntity)
     {
-      // gzdbg << objectBelow << "\n";
-      // gzdbg << groundHeight << "\n";
-      // gzdbg << groundBB.max.z << "\n";
-      // gzdbg << groundBB.min.z << "\n";
-
       // slightly above ground and upright
       // fromEntity->GetCollisionBoundingBox().min.z gives us the
       // lowest point of atlas robot. Set pin location to 1.15m

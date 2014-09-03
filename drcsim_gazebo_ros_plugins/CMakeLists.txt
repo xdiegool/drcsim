@@ -79,13 +79,7 @@ target_link_libraries(ContactModelPlugin ${catkin_LIBRARIES})
 
 find_package(drcsim_model_resources REQUIRED)
 add_library(AtlasPlugin src/AtlasPlugin.cpp)
-
-# message(fatal_error "\n\n\n\n\n-----------------------------------------\n${AtlasSimInterface1_INCLUDE_DIR}\n\n\n\n")
-# message(fatal_error "\n\n\n\n\n-----------------------------------------\n${AtlasSimInterface1_LIBRARY}\n\n\n\n")
-# message(fatal_error "\n\n\n\n\n-----------------------------------------\n${AtlasSimInterface2_INCLUDE_DIR}\n\n\n\n")
-# message(fatal_error "\n\n\n\n\n-----------------------------------------\n${AtlasSimInterface2_LIBRARY}\n\n\n\n")
-
-set_target_properties(AtlasPlugin PROPERTIES COMPILE_FLAGS "-DWITH_ATLAS_SIM_INTERFACE_1 -I${AtlasSimInterface1_INCLUDE_DIR}")
+set_target_properties(AtlasPlugin PROPERTIES COMPILE_FLAGS "-I${AtlasSimInterface1_INCLUDE_DIR}")
 target_link_libraries(AtlasPlugin ${catkin_LIBRARIES} ${AtlasSimInterface1_LIBRARY})
 add_dependencies(AtlasPlugin atlas_msgs_gencpp)
 
@@ -136,7 +130,25 @@ add_dependencies(actionlib_server atlas_msgs_gencpp) # or atlas_msgs_generate_me
 #############
 ## Install ##
 #############
-install(TARGETS VRCPlugin SandiaHandPlugin IRobotHandPlugin MultiSenseSLPlugin DRCVehicleROSPlugin ContactModelPlugin AtlasPlugin AtlasV3Plugin VRCScoringPlugin test_ros_plugin pub_atlas_joint_trajectory_test pub_joint_states pub_joint_commands pub_atlas_state pub_atlas_command_fast pub_atlas_command gz_model_teleport actionlib_server
+install(TARGETS
+  VRCPlugin
+  SandiaHandPlugin
+  IRobotHandPlugin
+  MultiSenseSLPlugin
+  DRCVehicleROSPlugin
+  ContactModelPlugin
+  AtlasPlugin
+  AtlasV3Plugin
+  VRCScoringPlugin
+  test_ros_plugin
+  pub_atlas_joint_trajectory_test
+  pub_joint_states
+  pub_joint_commands
+  pub_atlas_state
+  pub_atlas_command_fast
+  pub_atlas_command
+  gz_model_teleport
+  actionlib_server
   DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}/${PROJECT_NAME}/plugins/
 )
 

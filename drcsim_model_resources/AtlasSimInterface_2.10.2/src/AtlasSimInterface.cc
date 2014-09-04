@@ -17,12 +17,21 @@
 
 #include <iostream>
 #include <string>
-#include <vector>
 #include "AtlasControlTypes.h"
 #include "AtlasSimInterface.h"
 #include "AtlasSimInterfaceTypes.h"
 #include "AtlasVectorTypes.h"
+#include "simbicon/Controller.h"
 
+#define USE_SIMBICON
+
+#ifndef HAVE_EIGEN3
+#undef USE_SIMBICON
+#endif
+
+#ifdef USE_SIMBICON
+Controller *simbiconController;
+#else
 struct ErrorTerms
 {
   /// error term contributions to final control output
@@ -39,6 +48,7 @@ struct ErrorTerms
   }
 };
 ErrorTerms errorTerms[Atlas::NUM_JOINTS];
+#endif
 
 extern "C" {
 
@@ -46,14 +56,22 @@ extern "C" {
 AtlasSimInterface* create_atlas_sim_interface()
 {
   std::cerr << "\nWarning: Using Atlas Shim interface. "
-    << "Atlas will be more or less uncontrolled\n";
+    << "Atlas will be uncontrolled\n";
 
+#ifdef USE_SIMBICON
+  simbiconController = new Controller(Atlas::NUM_JOINTS);
+#else
+#endif
   return new AtlasSimInterface();
 }
 
 //////////////////////////////////////////////////
 void destroy_atlas_sim_interface()
 {
+#ifdef USE_SIMBICON
+  delete simbiconController;
+#else
+#endif
 }
 
 } // end extern "C"
@@ -89,6 +107,33 @@ AtlasErrorCode AtlasSimInterface::process_control_input(
     const AtlasRobotState& robot_state,
     AtlasControlOutput& control_output)
 {
+
+  // Joint [0-5]: FreeJoint (6) Child body : pelvis
+  // Joint [6]: back_bkz (1) Parent body: pelvis Child body : ltorso 
+  // Joint [7]: l_leg_hpz (1) Parent body: pelvis Child body : l_uglut 
+  // Joint [8]: r_leg_hpz (1) Parent body: pelvis Child body : r_uglut 
+  // Joint [9]: back_bky (1) Parent body: ltorso Child body : mtorso 
+  // Joint [10]: l_leg_hpx (1) Parent body: l_uglut Child body : l_lglut 
+  // Joint [11]: r_leg_hpx (1) Parent body: r_uglut Child body : r_lglut 
+  // Joint [12]: back_bkx (1) Parent body: mtorso Child body : utorso 
+  // Joint [13]: l_leg_hpy (1) Parent body: l_lglut Child body : l_uleg 
+  // Joint [14]: r_leg_hpy (1) Parent body: r_lglut Child body : r_uleg 
+  // Joint [15]: l_arm_shy (1) Parent body: utorso Child body : l_clav 
+  // Joint [16]: r_arm_shy (1) Parent body: utorso Child body : r_clav 
+  // Joint [17]: l_leg_kny (1) Parent body: l_uleg Child body : l_lleg 
+  // Joint [18]: r_leg_kny (1) Parent body: r_uleg Child body : r_lleg 
+  // Joint [19]: l_arm_shx (1) Parent body: l_clav Child body : l_scap 
+  // Joint [20]: r_arm_shx (1) Parent body: r_clav Child body : r_scap 
+  // Joint [xx]: l_leg_aky (1) Parent body: l_lleg Child body : l_talus 
+  // Joint [xx]: r_leg_aky (1) Parent body: r_lleg Child body : r_talus 
+  // Joint [xx]: l_arm_ely (1) Parent body: l_scap Child body : l_uarm 
+  // Joint [xx]: r_arm_ely (1) Parent body: r_scap Child body : r_uarm 
+  // Joint [xx]: l_leg_akx (1) Parent body: l_talus Child body : l_foot 
+  // Joint [xx]: r_leg_akx (1) Parent body: r_talus Child body : r_foot 
+  // Joint [xx]: l_arm_elx (1) Parent body: l_uarm Child body : l_larm 
+  // Joint [xx]: r_arm_elx (1) Parent body: r_uarm Child body : r_larm 
+  // Joint [xx]: l_arm_wry (1) Parent body: l_larm
+
   // convert control_input to local vectors
   std::vector<double> q_d;
   std::vector<double> qd_d;
@@ -169,6 +214,20 @@ AtlasErrorCode AtlasSimInterface::process_control_input(
   /// \TODO: compute dt from timestamps
   const double dt = 0.001;
 
+#ifdef USE_SIMBICON
+  /// \TODO: use states passed into simbicon controller
+  /// to trigger state change.
+  std::vector<double> torques = simbiconController->update(dt,
+    Atlas::NUM_JOINTS, &q[0], &qd[0], imu_q, imu_w, imu_a,
+    foot_fz[0], foot_mx[0], foot_my[0],   // left foot
+    foot_fz[1], foot_mx[1], foot_my[1]);  // right foot
+
+  // copy control torque to control_output
+  for (int i = 0; i < Atlas::NUM_JOINTS; ++i)
+  {
+    control_output.f_out[i] = torques[i];
+  }
+#else
   // Copied from AtlasPlugin::UpdatePIDControl and modified locally
   for (unsigned int i = 0; i < Atlas::NUM_JOINTS; ++i)
   {
@@ -228,6 +287,7 @@ AtlasErrorCode AtlasSimInterface::process_control_input(
     // fill in control output command efforts.
     control_output.f_out[i] = forceUnclamped;
   }
+#endif
 
   return AtlasSim::NO_ERRORS;
 }

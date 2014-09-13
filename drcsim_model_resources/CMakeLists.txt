@@ -98,14 +98,35 @@ include_directories(${GAZEBO_INCLUDE_DIRS})
 link_directories(${GAZEBO_LIBRARY_DIRS})
 
 #####################################
+# simbicon for AtlasSimInterface shim library
+pkg_check_modules(eigen3 eigen3)
+if (NOT eigen3_FOUND)
+  message(STATUS "eigen3 not found. Simbicon capabilities will be disabled.")
+else()
+  include_directories(${eigen3_INCLUDE_DIRS})
+  add_definitions(-DHAVE_EIGEN3)
+  # install simbicon headers
+  install (DIRECTORY
+    AtlasSimInterface_${ATLAS_SIM_INTERFACE_2_VERSION_FULL}/include/simbicon
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+endif ()
+
+#####################################
 # AtlasSimInterface 2.10.2 V3 shim library
 include_directories(
   ${PROJECT_SOURCE_DIR}/AtlasSimInterface_2.10.2/include
   ${PROJECT_SOURCE_DIR}/AtlasSimInterface_2.10.2/include/AtlasSimInterface_2.10.2
 )
 
-add_library(AtlasSimInterface2 SHARED AtlasSimInterface_2.10.2/src/AtlasSimInterface.cc)
+add_library(AtlasSimInterface2 SHARED
+  AtlasSimInterface_2.10.2/src/AtlasSimInterface.cc
+  AtlasSimInterface_2.10.2/src/simbicon/Controller.cpp
+  AtlasSimInterface_2.10.2/src/simbicon/State.cpp
+  AtlasSimInterface_2.10.2/src/simbicon/StateMachine.cpp
+  AtlasSimInterface_2.10.2/src/simbicon/TerminalCondition.cpp)
+
 set_target_properties(AtlasSimInterface2 PROPERTIES SOVERSION ${ATLAS_SIM_INTERFACE_2_VERSION_FULL})
+
 install (TARGETS AtlasSimInterface2 DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
 install (DIRECTORY AtlasSimInterface_${ATLAS_SIM_INTERFACE_2_VERSION_FULL}/include/AtlasSimInterface_${ATLAS_SIM_INTERFACE_2_VERSION_FULL} DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
 

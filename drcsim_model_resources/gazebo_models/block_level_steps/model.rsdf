@@ -1,0 +1,35 @@
+<?xml version="1.0" ?>
+<sdf version="1.4">
+ 
+  <% 
+    # Generate a trapezoidal step shape of cinderblocks
+    width  = 7 # x dimension
+    height = 6
+    
+    origin_x = 0 # location of first block
+    origin_y = 0 
+    origin_z = 0 
+
+
+    block_x = 0.43495
+    block_y = 0.0339
+    block_z = 0.2032
+  %>
+  <model name=block_level_steps>
+
+    <% for i in 0..(width-1) %>
+      <% for j in 0..(width-1) %>
+        <% x0 = origin_x + block_x*j + block_x*i %>
+        <% y0 = origin_y + block_y*i %>
+        <% z0 = origin_z + block_z*(width/2).floor*(i-(width/2).floor).abs %>
+        <%= "<link name=" + '"block_' + i.to_s + '_' + j.to_s + '" >' %>
+          <pose> <%= x0 %> <%= y0 %> <%= z0 %> 0 0 0
+          </pose>
+          <uri>model://cinder_block_wide</uri>
+        </link>
+      <% end %>
+    <% end %>
+
+  </model>
+
+</sdf>

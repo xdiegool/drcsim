@@ -65,7 +65,7 @@
 
     <include>
       <uri>model://drc_vehicle_xp900</uri>
-      <pose>9 0 0 0 0 0</pose>
+      <pose>3 0 0 0 0 0</pose>
     </include>
 
     <include>

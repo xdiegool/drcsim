@@ -32,40 +32,42 @@
     </include>
 
 
-    <include>
-      <uri>model://hinged_door</uri>
-      <name>door_1</name>
-      <pose>0.0 0.0 0 0 0 1.57</pose>
-    </include>
 
     <include>
       <uri>model://hinged_door</uri>
-      <name>door_2</name>
-      <pose>-0.95 2.5 0 0 0 -1.57</pose>
-    </include>
-
-    <include>
-      <uri>model://hinged_door</uri>
-      <name>door_3</name>
-      <pose>0.0 5.00 0 0 0 1.57</pose>
-    </include>
-
-    <include>
-      <uri>model://hinged_door</uri>
-      <name>door_4</name>
+      <name>pull_door</name>
       <pose>4.0 0.0 0 0 0 1.57</pose>
     </include>
 
+
     <include>
       <uri>model://hinged_door</uri>
-      <name>door_5</name>
-      <pose>3.0 2.5 0 0 0 -1.57</pose>
+      <name>push_door</name>
+      <pose>2 0.06 0 0 0 -1.57</pose>
     </include>
 
     <include>
       <uri>model://hinged_door</uri>
-      <name>door_6</name>
-      <pose>4.0 5.0 0 0 0 1.57</pose>
+      <name>weighted_push_door</name>
+      <pose>0 .06 0 0 0 -1.57</pose>
+    </include>
+
+    <include>
+      <uri>model://grey_wall</uri>
+      <name>wall_1</name>
+      <pose>5.4 -2 0 0 0 1.571 </pose>
+    </include>
+
+    <include>
+      <uri>model://grey_wall</uri>
+      <name>wall_2</name>
+      <pose>2 1.86 0 0 0 0 </pose>
+    </include>
+
+    <include>
+      <uri>model://grey_wall</uri>
+      <name>wall_3</name>
+      <pose>-1.4 -2 0 0 0 1.571 </pose>
     </include>
 
     <plugin filename="libVRCPlugin.so" name="vrc_plugin">

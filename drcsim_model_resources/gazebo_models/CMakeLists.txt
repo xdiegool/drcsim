@@ -43,6 +43,12 @@ add_subdirectory(vrc_valve)
 add_subdirectory(vrc_valve_a)
 add_subdirectory(vrc_valve_b)
 
+add_subdirectory(ladder_60deg_0rails)
+add_subdirectory(ladder_60deg_1rails)
+add_subdirectory(ladder_60deg_2rails)
+add_subdirectory(ladder_75deg_0rails)
+add_subdirectory(ladder_75deg_1rails)
+add_subdirectory(ladder_75deg_2rails)
 
 set (files
   database.config

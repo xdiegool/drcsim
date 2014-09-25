@@ -32,7 +32,37 @@
 
     <include>
       <name>ladder</name>
-      <uri>model://drc_practice_ladder</uri>
+      <uri>model://ladder_60deg_2rails</uri>
+    </include>
+
+    <include>
+      <name>ladder</name>
+      <uri>model://ladder_75deg_2rails</uri>
+      <pose>2 0 0 0 0 0</pose>
+    </include>
+
+    <include>
+      <name>ladder</name>
+      <uri>model://ladder_60deg_1rails</uri>
+      <pose>4 0 0 0 0 0</pose>
+    </include>
+
+    <include>
+      <name>ladder</name>
+      <uri>model://ladder_75deg_1rails</uri>
+      <pose>6 0 0 0 0 0</pose>
+    </include>
+
+    <include>
+      <name>ladder</name>
+      <uri>model://ladder_60deg_0rails</uri>
+      <pose>8 0 0 0 0 0</pose>
+    </include>
+
+    <include>
+      <name>ladder</name>
+      <uri>model://ladder_75deg_0rails</uri>
+      <pose>10 0 0 0 0 0</pose>
     </include>
 
     <plugin filename="libVRCPlugin.so" name="vrc_plugin">

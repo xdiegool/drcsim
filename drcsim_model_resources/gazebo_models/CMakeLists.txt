@@ -1,7 +1,3 @@
-add_subdirectory(block_angle_steps)
-add_subdirectory(block_level_steps)
-add_subdirectory(block_angle_base)
-add_subdirectory(floating_cinder_block_wide)
 add_subdirectory(cutout_wall)
 add_subdirectory(drc_terrain)
 add_subdirectory(drc_vehicle)
@@ -42,13 +38,6 @@ add_subdirectory(vrc_table)
 add_subdirectory(vrc_valve)
 add_subdirectory(vrc_valve_a)
 add_subdirectory(vrc_valve_b)
-
-add_subdirectory(ladder_60deg_0rails)
-add_subdirectory(ladder_60deg_1rails)
-add_subdirectory(ladder_60deg_2rails)
-add_subdirectory(ladder_75deg_0rails)
-add_subdirectory(ladder_75deg_1rails)
-add_subdirectory(ladder_75deg_2rails)
 
 set (files
   database.config

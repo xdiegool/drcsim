@@ -48,6 +48,7 @@ add_message_files(
   SynchronizationStatistics.msg
   Test.msg
   VRCScore.msg
+  SimulationState.msg
   )
 
 add_service_files(DIRECTORY srv FILES
